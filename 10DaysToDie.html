@@ -58,6 +58,7 @@ canvas{display:block;}
 #hpf{background:linear-gradient(90deg,#8b0000,#ff2020);}
 #huf{background:linear-gradient(90deg,#8b4513,#daa520);}
 #thf{background:linear-gradient(90deg,#00688b,#00bfff);}
+#stf{background:linear-gradient(90deg,#4a7a00,#aadd00);}
 .bval{color:#bbb;font-size:11px;margin-left:8px;width:55px;}
 
 /* HOTBAR */
@@ -236,6 +237,7 @@ canvas{display:block;}
     <div class="brow"><span class="blbl">❤ Leben</span><div class="bbg"><div class="bfill" id="hpf" style="width:100%"></div></div><span class="bval" id="hpv">100/100</span></div>
     <div class="brow"><span class="blbl">🍖 Hunger</span><div class="bbg"><div class="bfill" id="huf" style="width:100%"></div></div><span class="bval" id="huv">100/100</span></div>
     <div class="brow"><span class="blbl">💧 Durst</span><div class="bbg"><div class="bfill" id="thf" style="width:100%"></div></div><span class="bval" id="thv">100/100</span></div>
+    <div class="brow"><span class="blbl">⚡ Ausdauer</span><div class="bbg"><div class="bfill" id="stf" style="width:100%"></div></div><span class="bval" id="stv">100/100</span></div>
   </div>
 
   <!-- HOTBAR -->
@@ -357,7 +359,11 @@ const HCOUNT     = 200;
 const TCOUNT     = 500;
 const ZPH        = 5;      // zombies per house
 const PHEIGHT    = 1.72;
-const PSPEED     = 5.5;
+const PSPEED        = 5.5;
+const PSPEED_SPRINT = 10.5;
+const STAMINA_MAX   = 100;
+const STAMINA_DRAIN = 22;   // per second while sprinting
+const STAMINA_REGEN = 10;   // per second while not sprinting
 const GRAV       = -16;
 const JFORCE     = 6.5;
 const ZSPEED     = 1.9;
@@ -417,8 +423,9 @@ const CHEST_POOLS = [
 // ═══════════════════════════════════════════════════════════
 let G = {
   hp:100, maxHp:100,
-  hunger:100, maxHunger:100,
-  thirst:100, maxThirst:100,
+  hunger:100,  maxHunger:100,
+  thirst:100,  maxThirst:100,
+  stamina:100, maxStamina:STAMINA_MAX,
   day:1, time:0,
   zTimer:0,
   ammo:0, // current gun ammo
@@ -1323,8 +1330,21 @@ function updatePlayer(dt) {
   if (right) mv.x += 1;
   mv.applyEuler(new THREE.Euler(0, yaw, 0)).normalize();
 
-  camera.position.x += mv.x * PSPEED * dt;
-  camera.position.z += mv.z * PSPEED * dt;
+  const moving = mv.lengthSq() > 0;
+  const wantSprint = keys['shift'] && moving && onGnd;
+  const canSprint  = G.stamina > 0;
+  const isSprinting = wantSprint && canSprint;
+
+  if (isSprinting) {
+    G.stamina = Math.max(0, G.stamina - STAMINA_DRAIN * dt);
+  } else {
+    // Regen — slightly slower if stamina just ran out (short cooldown feel)
+    G.stamina = Math.min(G.maxStamina, G.stamina + STAMINA_REGEN * dt);
+  }
+
+  const speed = isSprinting ? PSPEED_SPRINT : PSPEED;
+  camera.position.x += mv.x * speed * dt;
+  camera.position.z += mv.z * speed * dt;
 
   // Gravity
   vel.y += GRAV * dt;
@@ -1731,7 +1751,7 @@ document.getElementById('btnRespawn').addEventListener('click', () => {
 });
 
 function resetGame() {
-  G.hp=100; G.hunger=100; G.thirst=100;
+  G.hp=100; G.hunger=100; G.thirst=100; G.stamina=100;
   G.alive=true; G.day=1; G.time=0; G.zTimer=0;
   G.inventory=[{...ITEMS.axe, count:1}];
   G.activeSlot=0;
@@ -1775,9 +1795,11 @@ function updateBars() {
   document.getElementById('hpf').style.width  = pct(G.hp);
   document.getElementById('huf').style.width  = pct(G.hunger);
   document.getElementById('thf').style.width  = pct(G.thirst);
+  document.getElementById('stf').style.width  = pct(G.stamina);
   document.getElementById('hpv').textContent  = `${Math.round(G.hp)}/100`;
   document.getElementById('huv').textContent  = `${Math.round(G.hunger)}/100`;
   document.getElementById('thv').textContent  = `${Math.round(G.thirst)}/100`;
+  document.getElementById('stv').textContent  = `${Math.round(G.stamina)}/100`;
   document.getElementById('dayco').textContent = `TAG ${G.day}`;
 }
 
