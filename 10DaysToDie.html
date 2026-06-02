@@ -454,6 +454,7 @@ let houseBoxes = [];  // {x, z, W, D}
 let zombies = [];
 let chests = [];
 let campfires = [];
+let doors = [];
 let placedMeshes = [];
 
 // ═══════════════════════════════════════════════════════════
@@ -615,8 +616,15 @@ function mkHouse(hx, hz, idx) {
   // Left / Right walls
   box(wm, 0.28, H, D, hx-W/2, H/2+0.22, hz);
   box(wm, 0.28, H, D, hx+W/2, H/2+0.22, hz);
-  // Door
-  box(dm, 1.5, 2.5, 0.3, hx, 1.47, hz+D/2+0.01);
+  // Door — pivot at left edge so it swings open
+  const doorPivot = new THREE.Group();
+  doorPivot.position.set(hx - 0.75, 0, hz + D/2);
+  const doorMesh = new THREE.Mesh(new THREE.BoxGeometry(1.48, 2.5, 0.1), dm);
+  doorMesh.position.set(0.74, 1.47, 0.05);
+  doorPivot.add(doorMesh);
+  doorPivot.userData = { type:'door', open:false, targetAngle:0, hx, hz };
+  scene.add(doorPivot);
+  doors.push(doorPivot);
   // Windows (front)
   box(gm, 1.4, 1.3, 0.12, hx-W*0.28, H*0.58, hz+D/2+0.05);
   box(gm, 1.4, 1.3, 0.12, hx+W*0.28, H*0.58, hz+D/2+0.05);
@@ -1371,6 +1379,12 @@ function onLMB() {
 }
 
 function onRMB() {
+  // Doors
+  for (const d of doors) {
+    if (camera.position.distanceTo(d.position) < IDIST) {
+      toggleDoor(d); return;
+    }
+  }
   // Chests
   for (const ch of chests) {
     if (camera.position.distanceTo(ch.position) < IDIST) {
@@ -1387,19 +1401,25 @@ function onRMB() {
 
 function updatePrompt() {
   const el = document.getElementById('iprompt');
+  for (const d of doors) {
+    if (camera.position.distanceTo(d.position) < IDIST) {
+      el.textContent = `[ RMB / F ] Tür ${d.userData.open ? 'schließen' : 'öffnen'}`;
+      el.style.display = 'block'; return;
+    }
+  }
   for (const ch of chests) {
     if (camera.position.distanceTo(ch.position) < IDIST) {
       el.textContent = '[ RMB / F ] Kiste öffnen';
-      el.style.display='block'; return;
+      el.style.display = 'block'; return;
     }
   }
   for (const cf of campfires) {
     if (camera.position.distanceTo(cf.position) < IDIST) {
       el.textContent = '[ RMB / F ] Lagerfeuer benutzen';
-      el.style.display='block'; return;
+      el.style.display = 'block'; return;
     }
   }
-  el.style.display='none';
+  el.style.display = 'none';
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1643,6 +1663,27 @@ function updateHotbar() {
 }
 
 // ═══════════════════════════════════════════════════════════
+// DOORS
+// ═══════════════════════════════════════════════════════════
+function toggleDoor(door) {
+  door.userData.open = !door.userData.open;
+  door.userData.targetAngle = door.userData.open ? -Math.PI / 2 : 0;
+  notify(door.userData.open ? '🚪 Tür geöffnet' : '🚪 Tür geschlossen');
+}
+
+function updateDoors(dt) {
+  for (const door of doors) {
+    const target = door.userData.targetAngle;
+    const diff = target - door.rotation.y;
+    if (Math.abs(diff) > 0.01) {
+      door.rotation.y += diff * Math.min(1, dt * 10);
+    } else {
+      door.rotation.y = target;
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
 // MINIMAP
 // ═══════════════════════════════════════════════════════════
 function drawMinimap() {
@@ -1866,7 +1907,7 @@ function loop() {
     updatePlayer(dt);
     updateZombies(dt);
     updateSurvival(dt);
-    // Fires + minimap on every 3rd frame to save CPU
+    updateDoors(dt);
     if (frameCount % 3 === 0) updateFires(dt);
     mmTimer += dt;
     if (mmTimer >= 0.3) { mmTimer=0; drawMinimap(); }
