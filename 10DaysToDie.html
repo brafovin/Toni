@@ -528,6 +528,292 @@ let hubLocked = false;
 let hubPortals = []; // {x, z, color, name, icon, desc, playable}
 
 // ═══════════════════════════════════════════════════════════
+// HUB WORLD
+// ═══════════════════════════════════════════════════════════
+function initHub() {
+  hubScene = new THREE.Scene();
+  hubScene.background = new THREE.Color(0xa8d8f0);
+  hubScene.fog = new THREE.FogExp2(0xa8d8f0, 0.008);
+
+  // Camera
+  hubCamera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 300);
+  hubCamera.position.set(0, 2, 20);
+  hubCamera.rotation.order = 'YXZ';
+
+  // Lights
+  const hubHemi = new THREE.HemisphereLight(0xd8eeff, 0x88cc88, 1.2);
+  hubScene.add(hubHemi);
+  const hubSun = new THREE.DirectionalLight(0xfff8e0, 2.0);
+  hubSun.position.set(80, 120, 60);
+  hubScene.add(hubSun);
+
+  // Checkerboard plaza (60×60 around center)
+  const PLAZA = 60;
+  const TILE = 4;
+  for (let ix = -PLAZA/2; ix < PLAZA/2; ix += TILE) {
+    for (let iz = -PLAZA/2; iz < PLAZA/2; iz += TILE) {
+      const col = ((ix/TILE + iz/TILE) & 1) === 0 ? 0xffffff : 0xd0d0d0;
+      const tg = new THREE.PlaneGeometry(TILE, TILE);
+      const tm = new THREE.MeshLambertMaterial({ color: col });
+      const t = new THREE.Mesh(tg, tm);
+      t.rotation.x = -Math.PI/2;
+      t.position.set(ix + TILE/2, 0.01, iz + TILE/2);
+      hubScene.add(t);
+    }
+  }
+
+  // Ground outside plaza
+  const outerGeo = new THREE.PlaneGeometry(600, 600);
+  const outerMat = new THREE.MeshLambertMaterial({ color: 0x7ec87e });
+  const outer = new THREE.Mesh(outerGeo, outerMat);
+  outer.rotation.x = -Math.PI/2;
+  outer.position.y = 0;
+  hubScene.add(outer);
+
+  // Central obelisk/fountain
+  const baseGeo = new THREE.CylinderGeometry(3, 3.5, 0.5, 16);
+  const baseMat = new THREE.MeshLambertMaterial({ color: 0xcccccc });
+  const base = new THREE.Mesh(baseGeo, baseMat);
+  base.position.set(0, 0.25, 0);
+  hubScene.add(base);
+
+  const pillarGeo = new THREE.CylinderGeometry(0.5, 0.7, 8, 8);
+  const pillarMat = new THREE.MeshLambertMaterial({ color: 0xe8e8e8 });
+  const pillar = new THREE.Mesh(pillarGeo, pillarMat);
+  pillar.position.set(0, 4.5, 0);
+  hubScene.add(pillar);
+
+  const topGeo = new THREE.CylinderGeometry(0, 1, 2, 4);
+  const topMat = new THREE.MeshLambertMaterial({ color: 0xffe066 });
+  const top = new THREE.Mesh(topGeo, topMat);
+  top.position.set(0, 9, 0);
+  hubScene.add(top);
+
+  // Background buildings
+  const bldColors = [0xff8866, 0x66aaff, 0x88ee88, 0xffdd66, 0xcc88ff, 0xff66aa];
+  const bldAngles = [30,70,120,160,200,250,300,340];
+  bldAngles.forEach((ang, i) => {
+    const rad = (ang * Math.PI / 180);
+    const dist = 80 + Math.random() * 20;
+    const bx = Math.cos(rad) * dist;
+    const bz = Math.sin(rad) * dist;
+    const bW = 8 + Math.random() * 8;
+    const bH = 12 + Math.random() * 18;
+    const bD = 8 + Math.random() * 8;
+    const bg = new THREE.BoxGeometry(bW, bH, bD);
+    const bm = new THREE.MeshLambertMaterial({ color: bldColors[i % bldColors.length] });
+    const bld = new THREE.Mesh(bg, bm);
+    bld.position.set(bx, bH/2, bz);
+    hubScene.add(bld);
+    // roof
+    const rg = new THREE.BoxGeometry(bW+0.5, 1, bD+0.5);
+    const rm = new THREE.MeshLambertMaterial({ color: 0x444466 });
+    const roof = new THREE.Mesh(rg, rm);
+    roof.position.set(bx, bH + 0.5, bz);
+    hubScene.add(roof);
+  });
+
+  // Portal definition data
+  const PORTAL_DATA = [
+    { name: '10 Days to Die', icon: '🧟', desc: 'Überlebe 10 Tage gegen Zombies', color: 0xff3333, playable: true },
+    { name: 'Sky Racers',     icon: '🏎️', desc: 'Rennen durch die Wolken',        color: 0xffdd00, playable: false },
+    { name: 'Ocean Depths',   icon: '🌊', desc: 'Erforsche den Ozean',             color: 0x3399ff, playable: false },
+    { name: 'Dragon Quest',   icon: '🐉', desc: 'Besiege den Drachen',             color: 0xff8800, playable: false },
+    { name: 'Space Station',  icon: '🚀', desc: 'Baue eine Raumstation',           color: 0xaa44ff, playable: false },
+  ];
+  const PORTAL_RADIUS = 25;
+  const PANEL_W = 4, PANEL_H = 5.5;
+
+  PORTAL_DATA.forEach((pd, i) => {
+    const ang = (i / PORTAL_DATA.length) * Math.PI * 2;
+    const px = Math.cos(ang) * PORTAL_RADIUS;
+    const pz = Math.sin(ang) * PORTAL_RADIUS;
+
+    // Glowing disk on ground
+    const diskGeo = new THREE.CylinderGeometry(2.5, 2.5, 0.15, 32);
+    const diskMat = new THREE.MeshLambertMaterial({ color: pd.color, emissive: pd.color, emissiveIntensity: 0.4 });
+    const disk = new THREE.Mesh(diskGeo, diskMat);
+    disk.position.set(px, 0.08, pz);
+    hubScene.add(disk);
+
+    // Floating panel — canvas texture
+    const panelCanvas = document.createElement('canvas');
+    panelCanvas.width = 256; panelCanvas.height = 320;
+    const ctx = panelCanvas.getContext('2d');
+
+    // Background
+    const r = (pd.color >> 16) & 0xff;
+    const g = (pd.color >> 8) & 0xff;
+    const b = pd.color & 0xff;
+    ctx.fillStyle = `rgba(${r},${g},${b},0.85)`;
+    roundRect(ctx, 0, 0, 256, 320, 24);
+    ctx.fill();
+
+    // White overlay
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    roundRect(ctx, 6, 6, 244, 308, 20);
+    ctx.fill();
+
+    // Icon
+    ctx.font = '72px serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(pd.icon, 128, 100);
+
+    // Name
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 26px Arial, sans-serif';
+    ctx.textAlign = 'center';
+    const words = pd.name.split(' ');
+    let line1 = words.slice(0, Math.ceil(words.length/2)).join(' ');
+    let line2 = words.slice(Math.ceil(words.length/2)).join(' ');
+    ctx.fillText(line1, 128, 155);
+    if (line2) ctx.fillText(line2, 128, 185);
+
+    // Description
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.font = '16px Arial, sans-serif';
+    ctx.fillText(pd.desc, 128, 220);
+
+    // Player count / status
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 18px Arial, sans-serif';
+    ctx.fillText(pd.playable ? '👥 1-4 Spieler' : '🔒 Demnächst', 128, 265);
+
+    // Border glow frame
+    ctx.strokeStyle = `rgba(255,255,255,0.6)`;
+    ctx.lineWidth = 4;
+    roundRect(ctx, 2, 2, 252, 316, 22);
+    ctx.stroke();
+
+    const panelTex = new THREE.CanvasTexture(panelCanvas);
+    const panelGeo = new THREE.PlaneGeometry(PANEL_W, PANEL_H);
+    const panelMat = new THREE.MeshBasicMaterial({ map: panelTex, transparent: true, side: THREE.DoubleSide });
+    const panel = new THREE.Mesh(panelGeo, panelMat);
+    // Face toward center
+    panel.position.set(px, 4.5, pz);
+    panel.lookAt(0, 4.5, 0);
+    hubScene.add(panel);
+
+    // Thin pole connecting disk to panel
+    const poleGeo = new THREE.CylinderGeometry(0.06, 0.06, 3.5, 6);
+    const poleMat = new THREE.MeshLambertMaterial({ color: 0xaaaaaa });
+    const pole = new THREE.Mesh(poleGeo, poleMat);
+    pole.position.set(px, 2, pz);
+    hubScene.add(pole);
+
+    hubPortals.push({ x: px, z: pz, color: pd.color, name: pd.name, icon: pd.icon, desc: pd.desc, playable: pd.playable, disk, diskMat });
+  });
+
+  // Handle canvas resize for hub camera
+  window.addEventListener('resize', () => {
+    hubCamera.aspect = innerWidth / innerHeight;
+    hubCamera.updateProjectionMatrix();
+  });
+}
+
+// Helper: rounded rectangle path
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function enterHubMode() {
+  G.hubMode = true;
+  hubYaw = 0; hubPitch = 0;
+  hubCamera.position.set(0, 2, 20);
+  hubCamera.rotation.set(0, 0, 0);
+  // Ensure game container visible (holds the canvas)
+  document.getElementById('game').style.display = 'block';
+  // Show hub UI, hide game UI
+  document.getElementById('hubTopBar').style.display = 'flex';
+  document.getElementById('hubBottomHint').style.display = 'block';
+  document.getElementById('hud').style.display = 'none';
+  document.getElementById('hotbar').style.display = 'none';
+  document.getElementById('dayco').style.display = 'none';
+  document.getElementById('minimap').style.display = 'none';
+  document.getElementById('xhair').style.display = 'none';
+  document.getElementById('ammohud').style.display = 'none';
+  document.getElementById('btnBackToHub').style.display = 'none';
+  setTimeout(() => document.getElementById('gc').requestPointerLock(), 100);
+}
+
+function exitHubMode() {
+  G.hubMode = false;
+  // Show game UI
+  document.getElementById('hubTopBar').style.display = 'none';
+  document.getElementById('hubBottomHint').style.display = 'none';
+  document.getElementById('hubInteract').style.display = 'none';
+  document.getElementById('hud').style.display = 'block';
+  document.getElementById('hotbar').style.display = 'flex';
+  document.getElementById('dayco').style.display = 'block';
+  document.getElementById('minimap').style.display = 'block';
+  document.getElementById('xhair').style.display = 'block';
+  document.getElementById('btnBackToHub').style.display = 'block';
+}
+
+let hubNearPortal = null;
+function updateHub(dt) {
+  if (!hubLocked) return;
+
+  // WASD movement
+  const fwd   = keys['w'] || keys['arrowup']    || false;
+  const back  = keys['s'] || keys['arrowdown']  || false;
+  const left  = keys['a'] || keys['arrowleft']  || false;
+  const right = keys['d'] || keys['arrowright'] || false;
+
+  const mv = new THREE.Vector3();
+  if (fwd)   mv.z -= 1;
+  if (back)  mv.z += 1;
+  if (left)  mv.x -= 1;
+  if (right) mv.x += 1;
+  if (mv.lengthSq() > 0) {
+    mv.applyEuler(new THREE.Euler(0, hubYaw, 0)).normalize();
+    hubCamera.position.x += mv.x * 8 * dt;
+    hubCamera.position.z += mv.z * 8 * dt;
+  }
+
+  // Keep on ground
+  hubCamera.position.y = 2;
+
+  // Apply rotation
+  hubCamera.rotation.y = hubYaw;
+  hubCamera.rotation.x = hubPitch;
+
+  // Portal proximity
+  hubNearPortal = null;
+  const cp = hubCamera.position;
+  for (const p of hubPortals) {
+    const dist = Math.hypot(cp.x - p.x, cp.z - p.z);
+    if (dist < 5) {
+      hubNearPortal = p;
+      p.diskMat.emissiveIntensity = 0.9;
+    } else {
+      p.diskMat.emissiveIntensity = 0.4;
+    }
+  }
+
+  const hint = document.getElementById('hubInteract');
+  if (hubNearPortal) {
+    const label = hubNearPortal.playable
+      ? `[ E ] ${hubNearPortal.icon} ${hubNearPortal.name} spielen`
+      : `${hubNearPortal.icon} ${hubNearPortal.name} — Demnächst`;
+    hint.textContent = label;
+    hint.style.display = 'block';
+  } else {
+    hint.style.display = 'none';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
 // WORLD OBJECTS
 // ═══════════════════════════════════════════════════════════
 let trees = [];       // {mesh, x, z, hp}
@@ -1558,14 +1844,25 @@ function initPlayer() {
 
   const cvs = document.getElementById('gc');
   cvs.addEventListener('click', () => {
+    if (G.hubMode) { cvs.requestPointerLock(); return; }
     if (G.started && G.alive && !G.paused) cvs.requestPointerLock();
   });
   document.addEventListener('pointerlockchange', () => {
-    locked = document.pointerLockElement === cvs;
+    const isLocked = document.pointerLockElement === cvs;
+    locked = isLocked;
+    hubLocked = isLocked;
   });
 
   document.addEventListener('mousemove', e => {
-    if (!locked || G.paused || !G.alive) return;
+    if (!locked) return;
+    if (G.hubMode) {
+      const s = 0.002;
+      hubYaw   -= e.movementX * s;
+      hubPitch -= e.movementY * s;
+      hubPitch  = Math.max(-1.2, Math.min(1.2, hubPitch));
+      return;
+    }
+    if (G.paused || !G.alive) return;
     const s = G.settings.sens * 0.001;
     yaw   -= e.movementX * s;
     pitch -= e.movementY * s;
@@ -1575,7 +1872,7 @@ function initPlayer() {
   });
 
   document.addEventListener('mousedown', e => {
-    if (!locked || G.paused || !G.alive) return;
+    if (!locked || G.hubMode || G.paused || !G.alive) return;
     if (e.button === 0) { mouseDown = true; onLMB(); }
     if (e.button === 2) onRMB();
   });
@@ -1583,7 +1880,7 @@ function initPlayer() {
   document.addEventListener('contextmenu', e => e.preventDefault());
 
   document.addEventListener('wheel', e => {
-    if (!locked) return;
+    if (!locked || G.hubMode) return;
     G.activeSlot = (G.activeSlot + (e.deltaY>0?1:4)) % 5;
     updateHotbar();
   });
@@ -1602,11 +1899,32 @@ function onKey(e) {
 
   const k = e.key.toLowerCase();
   if (k === 'escape') {
+    if (G.hubMode) { document.exitPointerLock(); return; }
     if (anyOpen()) closeAll();
     else togglePause();
     return;
   }
   if (k === 'tab') { e.preventDefault(); } // prevent browser tab-switch
+
+  // Hub interaction
+  if (k === 'e' && G.hubMode) {
+    if (hubNearPortal && hubNearPortal.playable) {
+      exitHubMode();
+      // Start game if not already started
+      if (!G.started) {
+        G.started = true;
+        G.inventory = new Array(40).fill(null); G.inventory[0] = {...ITEMS.axe, count:1};
+        updateBars(); updateHotbar();
+        camera.position.set(0, PHEIGHT, 10);
+        yaw = 0; pitch = 0; vel.set(0,0,0);
+        clock.start();
+        notify('Willkommen! Überlebe 10 Tage! [ E=Benutzen | C=Crafting | Q=Bauen ]');
+      }
+      setTimeout(() => document.getElementById('gc').requestPointerLock(), 100);
+    }
+    return;
+  }
+
   if (!G.started || !G.alive) return;
 
   const ks = G.settings.keys;
@@ -2429,11 +2747,9 @@ document.getElementById('btnPauseSet').addEventListener('click', () => {
 document.getElementById('btnQuitGame').addEventListener('click', () => {
   if (confirm('Spiel wirklich verlassen? Fortschritt geht verloren.')) {
     document.getElementById('pauseMenu').style.display = 'none';
-    document.getElementById('game').style.display = 'none';
-    document.getElementById('mainMenu').style.display = 'flex';
-    G.started = false;
     G.paused  = false;
     document.exitPointerLock();
+    enterHubMode();
   }
 });
 
@@ -2455,9 +2771,16 @@ let mmTimer = 0;
 let frameCount = 0;
 function loop() {
   requestAnimationFrame(loop);
-  if (!G.started) { composer.render(); return; }
   const dt = Math.min(clock.getDelta(), 0.05);
   frameCount++;
+
+  if (G.hubMode) {
+    updateHub(dt);
+    renderer.render(hubScene, hubCamera);
+    return;
+  }
+
+  if (!G.started) { composer.render(); return; }
   if (!G.paused && G.alive) {
     updatePlayer(dt);
     updateZombies(dt);
@@ -2529,6 +2852,10 @@ async function load() {
   prog(80,'Berechne Schatten...');
   await sl(300);
 
+  prog(85,'Erstelle Hub-Welt...');
+  await sl(200);
+  initHub();
+
   prog(90,'Initialisiere Spieler...');
   await sl(200);
   initPlayer();
@@ -2553,14 +2880,13 @@ async function load() {
 document.getElementById('btnStart').addEventListener('click', () => {
   document.getElementById('mainMenu').style.display='none';
   document.getElementById('game').style.display='block';
-  G.started=true;
-  G.inventory=new Array(40).fill(null); G.inventory[0]={...ITEMS.axe,count:1};
-  updateBars(); updateHotbar();
-  camera.position.set(0,PHEIGHT,10);
-  yaw=0; pitch=0; vel.set(0,0,0);
-  clock.start();
-  setTimeout(()=>document.getElementById('gc').requestPointerLock(),100);
-  notify('Willkommen! Überlebe 10 Tage! [ E=Inventar | C=Crafting | Q=Bauen ]');
+  enterHubMode();
+});
+
+document.getElementById('btnBackToHub').addEventListener('click', () => {
+  document.getElementById('btnBackToHub').style.display = 'none';
+  document.exitPointerLock();
+  enterHubMode();
 });
 
 document.getElementById('btnMenuSettings').addEventListener('click', () => openModal('setModal'));
