@@ -752,12 +752,12 @@ function mkHouse(hx, hz, idx) {
 
   const frontPanel = new THREE.Mesh(new THREE.BoxGeometry(panelW, panelThick, slopeLen), rm);
   frontPanel.position.set(hx, panelCY, panelCZ_front);
-  frontPanel.rotation.x = -slopeAngle;
+  frontPanel.rotation.x = slopeAngle;
   scene.add(frontPanel);
 
   const backPanel = new THREE.Mesh(new THREE.BoxGeometry(panelW, panelThick, slopeLen), rm);
   backPanel.position.set(hx, panelCY, panelCZ_back);
-  backPanel.rotation.x = slopeAngle;
+  backPanel.rotation.x = -slopeAngle;
   scene.add(backPanel);
 
   // Ridge cap (thin box along the top)
