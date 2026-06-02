@@ -693,48 +693,242 @@ function mkCampfire(x, z) {
 // ═══════════════════════════════════════════════════════════
 // ZOMBIE SYSTEM
 // ═══════════════════════════════════════════════════════════
-const ZOMBIE_SKIN  = [0xbcbcaa, 0xc0c0a8, 0xb8b8a0, 0xd0cfc0];
-const ZOMBIE_CLOTH = [0x5a4030, 0x3a5020, 0x504040, 0x404560, 0x603040];
+// Realistic zombie skin tones — pale, slightly greenish/grey desaturated
+const ZOMBIE_SKINS = [
+  { base:0xb8c4a8, dark:0x9aab8a, wound:0x7a5a5a },
+  { base:0xc2b8a0, dark:0xa89880, wound:0x8a5a50 },
+  { base:0xaabaa8, dark:0x8a9a88, wound:0x6a5050 },
+  { base:0xb0baa0, dark:0x90988a, wound:0x726050 },
+];
+const ZOMBIE_CLOTHES = [
+  { shirt:0x4a3828, pants:0x3a3020 },
+  { shirt:0x324428, pants:0x282e1a },
+  { shirt:0x483838, pants:0x302828 },
+  { shirt:0x3a3c50, pants:0x28283a },
+  { shirt:0x503040, pants:0x382030 },
+];
+
+function makeZombieSkinTexture(baseHex, darkHex, woundHex) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 64; canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  const base = '#' + baseHex.toString(16).padStart(6,'0');
+  const dark = '#' + darkHex.toString(16).padStart(6,'0');
+  const wound = '#' + woundHex.toString(16).padStart(6,'0');
+
+  ctx.fillStyle = base;
+  ctx.fillRect(0, 0, 64, 64);
+
+  // Skin variation patches
+  ctx.globalAlpha = 0.25;
+  for (let i=0; i<20; i++) {
+    ctx.fillStyle = Math.random()>0.5 ? dark : base;
+    ctx.fillRect(Math.random()*60, Math.random()*60, 4+Math.random()*8, 3+Math.random()*6);
+  }
+  // Wound marks / bruises
+  ctx.globalAlpha = 0.5;
+  const wCount = Math.floor(Math.random()*4)+1;
+  for (let i=0; i<wCount; i++) {
+    ctx.fillStyle = wound;
+    ctx.fillRect(Math.random()*56, Math.random()*56, 2+Math.random()*5, 1+Math.random()*3);
+  }
+  // Veins / dark lines
+  ctx.globalAlpha = 0.2;
+  ctx.strokeStyle = '#556644';
+  ctx.lineWidth = 1;
+  for (let i=0; i<3; i++) {
+    ctx.beginPath();
+    ctx.moveTo(Math.random()*64, Math.random()*64);
+    ctx.lineTo(Math.random()*64, Math.random()*64);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.magFilter = THREE.NearestFilter;
+  return tex;
+}
+
+function makeClothTexture(hexColor) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 32; canvas.height = 32;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#' + hexColor.toString(16).padStart(6,'0');
+  ctx.fillRect(0,0,32,32);
+  // Fabric weave / dirt
+  ctx.globalAlpha = 0.18;
+  for (let y=0; y<32; y+=2) {
+    ctx.fillStyle = y%4===0?'#000000':'#ffffff';
+    ctx.fillRect(0,y,32,1);
+  }
+  ctx.globalAlpha = 0.3;
+  for (let i=0; i<8; i++) {
+    ctx.fillStyle='#000000';
+    ctx.fillRect(Math.random()*28, Math.random()*28, 2+Math.random()*3, 1);
+  }
+  ctx.globalAlpha = 1;
+  return new THREE.CanvasTexture(canvas);
+}
 
 function spawnZombie(x, z) {
   const g = new THREE.Group();
-  const skin = new THREE.MeshLambertMaterial({ color: ZOMBIE_SKIN[Math.floor(Math.random()*ZOMBIE_SKIN.length)] });
-  const cloth = new THREE.MeshLambertMaterial({ color: ZOMBIE_CLOTH[Math.floor(Math.random()*ZOMBIE_CLOTH.length)] });
-  const eye = new THREE.MeshBasicMaterial({ color: 0xff1010 });
-  const hair = new THREE.MeshLambertMaterial({ color: 0x2a1a0a });
+  const skinDef  = ZOMBIE_SKINS[Math.floor(Math.random()*ZOMBIE_SKINS.length)];
+  const clothDef = ZOMBIE_CLOTHES[Math.floor(Math.random()*ZOMBIE_CLOTHES.length)];
 
-  function part(mat, w,h,d, px,py,pz) {
+  const skinTex  = makeZombieSkinTexture(skinDef.base, skinDef.dark, skinDef.wound);
+  const shirtTex = makeClothTexture(clothDef.shirt);
+  const pantsTex = makeClothTexture(clothDef.pants);
+
+  const skinMat  = new THREE.MeshLambertMaterial({ map: skinTex });
+  const shirtMat = new THREE.MeshLambertMaterial({ map: shirtTex, color: clothDef.shirt });
+  const pantsMat = new THREE.MeshLambertMaterial({ map: pantsTex, color: clothDef.pants });
+  const eyeMat   = new THREE.MeshBasicMaterial({ color: 0xff1800 });
+  const eyeWhMat = new THREE.MeshBasicMaterial({ color: 0xddddcc });
+  const hairMat  = new THREE.MeshLambertMaterial({ color: [0x1a1008,0x0a0808,0x2a2018,0x180808][Math.floor(Math.random()*4)] });
+  const toothMat = new THREE.MeshLambertMaterial({ color: 0xd4c890 });
+  const nailMat  = new THREE.MeshLambertMaterial({ color: 0x8a7a6a });
+  const bloodMat = new THREE.MeshLambertMaterial({ color: 0x6a0000 });
+
+  function part(mat, w,h,d, px,py,pz, parent) {
     const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), mat);
-    m.position.set(px,py,pz); m.castShadow=true; g.add(m); return m;
+    m.position.set(px,py,pz);
+    m.castShadow = true;
+    (parent||g).add(m);
+    return m;
   }
 
-  const torso = part(cloth, 0.68, 0.88, 0.38,  0, 1.08, 0);
-  const head  = part(skin,  0.5,  0.5,  0.5,   0, 1.84, 0);
-  const armL  = part(cloth, 0.24, 0.72, 0.24, -0.52, 1.08, 0);
-  const armR  = part(cloth, 0.24, 0.72, 0.24,  0.52, 1.08, 0);
-  const legL  = part(cloth, 0.29, 0.88, 0.29, -0.2,  0.4,  0);
-  const legR  = part(cloth, 0.29, 0.88, 0.29,  0.2,  0.4,  0);
-  // Eyes
-  part(eye, 0.1,0.08,0.06, -0.12,1.9,0.26);
-  part(eye, 0.1,0.08,0.06,  0.12,1.9,0.26);
-  // Hair
-  part(hair, 0.52,0.14,0.52, 0, 2.12, 0);
+  // === LEGS (separate pivot groups for better animation) ===
+  const legLGroup = new THREE.Group(); legLGroup.position.set(-0.19, 1.0, 0); g.add(legLGroup);
+  const legRGroup = new THREE.Group(); legRGroup.position.set( 0.19, 1.0, 0); g.add(legRGroup);
+  // Upper leg
+  const upLegL = part(pantsMat, 0.28, 0.52, 0.28, 0,-0.26,0, legLGroup);
+  const upLegR = part(pantsMat, 0.28, 0.52, 0.28, 0,-0.26,0, legRGroup);
+  // Lower leg + shoe
+  const loLegLG = new THREE.Group(); loLegLG.position.set(0,-0.52,0); legLGroup.add(loLegLG);
+  const loLegRG = new THREE.Group(); loLegRG.position.set(0,-0.52,0); legRGroup.add(loLegRG);
+  part(pantsMat, 0.26, 0.50, 0.26, 0,-0.25,0, loLegLG);
+  part(pantsMat, 0.26, 0.50, 0.26, 0,-0.25,0, loLegRG);
+  // Shoes (darker)
+  const shoeMat = new THREE.MeshLambertMaterial({color:0x1a1208});
+  part(shoeMat, 0.30, 0.14, 0.38, 0,-0.52,0.04, loLegLG);
+  part(shoeMat, 0.30, 0.14, 0.38, 0,-0.52,0.04, loLegRG);
+
+  // === TORSO ===
+  const torso = part(shirtMat, 0.72, 0.96, 0.42, 0, 1.60, 0);
+  // Belt
+  const beltMat = new THREE.MeshLambertMaterial({color:0x1a1008});
+  part(beltMat, 0.74, 0.07, 0.44, 0, 1.13, 0);
+  // Shirt tear detail
+  part(bloodMat, 0.12, 0.06, 0.43, (Math.random()-0.5)*0.3, 1.45+Math.random()*0.2, 0);
+
+  // === ARMS (pivot groups at shoulder) ===
+  const armLGroup = new THREE.Group(); armLGroup.position.set(-0.48, 2.04, 0); g.add(armLGroup);
+  const armRGroup = new THREE.Group(); armRGroup.position.set( 0.48, 2.04, 0); g.add(armRGroup);
+  // Upper arm
+  const uArmL = part(shirtMat, 0.26, 0.48, 0.26, 0,-0.24,0, armLGroup);
+  const uArmR = part(shirtMat, 0.26, 0.48, 0.26, 0,-0.24,0, armRGroup);
+  // Forearm
+  const loArmLG = new THREE.Group(); loArmLG.position.set(0,-0.48,0); armLGroup.add(loArmLG);
+  const loArmRG = new THREE.Group(); loArmRG.position.set(0,-0.48,0); armRGroup.add(loArmRG);
+  part(skinMat, 0.23, 0.46, 0.23, 0,-0.23,0, loArmLG);
+  part(skinMat, 0.23, 0.46, 0.23, 0,-0.23,0, loArmRG);
+  // Hands
+  const handL = part(skinMat, 0.20, 0.18, 0.20, 0,-0.50,0, loArmLG);
+  const handR = part(skinMat, 0.20, 0.18, 0.20, 0,-0.50,0, loArmRG);
+  // Fingernails (small dark strips)
+  part(nailMat, 0.19, 0.03, 0.04, 0,-0.59,-0.08, loArmLG);
+  part(nailMat, 0.19, 0.03, 0.04, 0,-0.59,-0.08, loArmRG);
+
+  // === HEAD ===
+  const headGroup = new THREE.Group(); headGroup.position.set(0, 2.16, 0); g.add(headGroup);
+  const headMesh = part(skinMat, 0.52, 0.56, 0.50, 0, 0.28, 0, headGroup);
+  // Neck
+  part(skinMat, 0.26, 0.20, 0.24, 0,-0.04,0, headGroup);
+  // Eye sockets (dark)
+  const socketMat = new THREE.MeshLambertMaterial({color:0x1a1410});
+  part(socketMat, 0.18, 0.12, 0.04, -0.12,0.32,0.25, headGroup);
+  part(socketMat, 0.18, 0.12, 0.04,  0.12,0.32,0.25, headGroup);
+  // Eyeballs
+  part(eyeWhMat, 0.10, 0.08, 0.04, -0.12,0.32,0.27, headGroup);
+  part(eyeWhMat, 0.10, 0.08, 0.04,  0.12,0.32,0.27, headGroup);
+  // Pupils (red glowing)
+  part(eyeMat, 0.05,0.05,0.03, -0.12,0.32,0.29, headGroup);
+  part(eyeMat, 0.05,0.05,0.03,  0.12,0.32,0.29, headGroup);
+  // Nose
+  part(skinMat, 0.08,0.06,0.06, 0,0.22,0.26, headGroup);
+  // Mouth / teeth (open, snarling)
+  const jawMat = new THREE.MeshLambertMaterial({color:0x1a0808});
+  part(jawMat, 0.28,0.09,0.06, 0,0.10,0.25, headGroup);
+  part(toothMat,0.05,0.05,0.04,-0.07,0.115,0.26,headGroup);
+  part(toothMat,0.05,0.05,0.04, 0.00,0.115,0.26,headGroup);
+  part(toothMat,0.05,0.05,0.04, 0.07,0.115,0.26,headGroup);
+  // Blood drip from mouth
+  part(bloodMat,0.03,0.05,0.03, 0.04,0.06,0.26,headGroup);
+  // Hair (messy patches)
+  const hairH = 0.08 + Math.random()*0.06;
+  part(hairMat, 0.54, hairH, 0.52, 0, 0.57, 0, headGroup);
+  part(hairMat, 0.30, hairH*0.7, 0.10, -0.22, 0.53, -0.05, headGroup);
+  part(hairMat, 0.20, hairH*0.5, 0.10,  0.18, 0.52,  0.0,  headGroup);
+  // Wound / gash on head (random side)
+  if (Math.random()>0.4) {
+    const side = Math.random()>0.5 ? -0.27 : 0.27;
+    part(bloodMat, 0.04, 0.14+Math.random()*0.1, 0.04, side, 0.38+Math.random()*0.1, 0.0, headGroup);
+  }
 
   g.position.set(x, 0, z);
   g.userData = {
     type:'zombie', hp:ZHP, maxHp:ZHP,
-    state:'idle', // idle|chase|attack
+    state:'idle',
     atkCool:0,
     wanderT:Math.random()*4,
     wanderDir:new THREE.Vector3((Math.random()-0.5),0,(Math.random()-0.5)).normalize(),
     animT:Math.random()*10,
     attackAnim:0,
     dead:false,
-    armL, armR, legL, legR, head, torso
+    armLG:armLGroup, armRG:armRGroup,
+    loArmLG, loArmRG,
+    legLG:legLGroup, legRG:legRGroup,
+    loLegLG, loLegRG,
+    headGroup,
   };
   scene.add(g);
   zombies.push(g);
   return g;
+}
+
+function applyZombieWallCollision(zg) {
+  // House walls
+  for (const h of houseBoxes) {
+    const hw = h.W/2 + 0.4;
+    const hd = h.D/2 + 0.4;
+    const lx = zg.position.x - h.x;
+    const lz = zg.position.z - h.z;
+    if (Math.abs(lx) < hw && Math.abs(lz) < hd) {
+      // Push zombie out from nearest wall face
+      const dL = lx + hw, dR = hw - lx, dF = lz + hd, dB = hd - lz;
+      const mn = Math.min(dL, dR, dF, dB);
+      if      (mn === dL) zg.position.x = h.x - hw;
+      else if (mn === dR) zg.position.x = h.x + hw;
+      else if (mn === dF) zg.position.z = h.z - hd;
+      else                zg.position.z = h.z + hd;
+      // Deflect wander direction so zombie doesn't get stuck
+      zg.userData.wanderDir.x *= -0.8;
+      zg.userData.wanderDir.z *= -0.8;
+    }
+  }
+  // Tree trunks
+  for (const tc of treeCols) {
+    const dx = zg.position.x - tc.x;
+    const dz = zg.position.z - tc.z;
+    const d = Math.hypot(dx, dz);
+    if (d < tc.r + 0.35 && d > 0.001) {
+      zg.position.x = tc.x + (dx/d)*(tc.r+0.35);
+      zg.position.z = tc.z + (dz/d)*(tc.r+0.35);
+    }
+  }
+  // World bounds
+  zg.position.x = Math.max(-WHALF+1, Math.min(WHALF-1, zg.position.x));
+  zg.position.z = Math.max(-WHALF+1, Math.min(WHALF-1, zg.position.z));
 }
 
 function updateZombies(dt) {
@@ -765,11 +959,13 @@ function updateZombies(dt) {
       }
       zg.position.x += ud.wanderDir.x * ZSPEED*0.25*dt;
       zg.position.z += ud.wanderDir.z * ZSPEED*0.25*dt;
+      applyZombieWallCollision(zg);
     } else if (ud.state === 'chase') {
       if (dist > ZATTACK) {
         const nx=dx/dist, nz=dz/dist;
         zg.position.x += nx * ZSPEED * dt;
         zg.position.z += nz * ZSPEED * dt;
+        applyZombieWallCollision(zg);
         zg.lookAt(new THREE.Vector3(pp.x, zg.position.y, pp.z));
       } else {
         ud.state = 'attack';
@@ -783,27 +979,56 @@ function updateZombies(dt) {
       }
     }
 
-    // Animate limbs
-    const ws = ud.state==='idle' ? 1.5 : 4.5;
-    const sw = Math.sin(ud.animT * ws) * 0.45;
-    ud.armL.rotation.x = sw;
-    ud.armR.rotation.x = -sw;
-    ud.legL.rotation.x = -sw*0.7;
-    ud.legR.rotation.x = sw*0.7;
-    // Bite animation
-    if (ud.attackAnim > 0) {
-      ud.head.position.z = Math.abs(Math.sin(ud.attackAnim*15))*0.35;
-      ud.armL.rotation.x = -1.2;
-      ud.armR.rotation.x = -1.2;
-    } else {
-      ud.head.position.z = 0;
-    }
-    // Body bob
-    zg.position.y = Math.abs(Math.sin(ud.animT*ws*0.5))*0.05;
+    // === ANIMATION ===
+    const ws = ud.state==='idle' ? 1.8 : 5.0;
+    const sw = Math.sin(ud.animT * ws) * 0.5;
+    const sw2 = Math.sin(ud.animT * ws + Math.PI) * 0.5;
 
-    // Clamp to world
-    zg.position.x = Math.max(-WHALF, Math.min(WHALF, zg.position.x));
-    zg.position.z = Math.max(-WHALF, Math.min(WHALF, zg.position.z));
+    // Arms swing forward/back (zombie outstretched arms when chasing)
+    if (ud.state === 'chase' || ud.state === 'attack') {
+      // Arms raised forward — classic zombie pose
+      ud.armLG.rotation.x = -1.1 + Math.sin(ud.animT*ws)*0.15;
+      ud.armRG.rotation.x = -1.1 + Math.sin(ud.animT*ws+Math.PI)*0.15;
+      ud.armLG.rotation.z =  0.15;
+      ud.armRG.rotation.z = -0.15;
+      // Forearm droops slightly
+      ud.loArmLG.rotation.x =  0.4;
+      ud.loArmRG.rotation.x =  0.4;
+    } else {
+      // Idle: natural arm swing
+      ud.armLG.rotation.x = sw * 0.55;
+      ud.armRG.rotation.x = sw2 * 0.55;
+      ud.armLG.rotation.z =  0.08;
+      ud.armRG.rotation.z = -0.08;
+      ud.loArmLG.rotation.x = Math.max(0, sw*0.3);
+      ud.loArmRG.rotation.x = Math.max(0, sw2*0.3);
+    }
+
+    // Legs
+    ud.legLG.rotation.x = sw * 0.65;
+    ud.legRG.rotation.x = sw2 * 0.65;
+    // Knee bend (lower leg)
+    ud.loLegLG.rotation.x = Math.max(0, -sw) * 0.5;
+    ud.loLegRG.rotation.x = Math.max(0, -sw2) * 0.5;
+
+    // Head tilt (zombie moaning look)
+    ud.headGroup.rotation.z = Math.sin(ud.animT*1.2)*0.06;
+    ud.headGroup.rotation.x = ud.state==='idle' ? Math.sin(ud.animT*0.8)*0.05 : -0.08;
+
+    // Bite lunge animation
+    if (ud.attackAnim > 0) {
+      const lunge = Math.abs(Math.sin(ud.attackAnim*14))*0.4;
+      ud.headGroup.position.z = lunge;
+      ud.armLG.rotation.x = -1.5;
+      ud.armRG.rotation.x = -1.5;
+      ud.loArmLG.rotation.x = 0.6;
+      ud.loArmRG.rotation.x = 0.6;
+    } else {
+      ud.headGroup.position.z = 0;
+    }
+
+    // Body bob while walking
+    zg.position.y = Math.abs(Math.sin(ud.animT * ws * 0.5)) * 0.06;
   }
 }
 
@@ -815,9 +1040,11 @@ function hurtZombie(z, dmg) {
 
 function killZombie(z) {
   z.userData.dead = true;
-  z.rotation.z = Math.PI/2;
-  z.position.y = 0.4;
-  setTimeout(() => { scene.remove(z); zombies.splice(zombies.indexOf(z),1); }, 4000);
+  // Fall sideways
+  z.rotation.z = (Math.random()>0.5?1:-1) * (Math.PI/2 + Math.random()*0.3);
+  z.rotation.y += (Math.random()-0.5)*0.5;
+  z.position.y = 0.35;
+  setTimeout(() => { scene.remove(z); const i=zombies.indexOf(z); if(i>=0)zombies.splice(i,1); }, 5000);
   notify('Zombie getötet!');
 }
 
