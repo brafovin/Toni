@@ -368,7 +368,7 @@ const GRAV       = -16;
 const JFORCE     = 6.5;
 const ZSPEED     = 1.9;
 const ZCHASE     = 26;
-const ZATTACK    = 2.2;
+const ZATTACK    = 1.2;
 const ZDMG       = 5;
 const ZCOOL      = 2.0;
 const ZHP        = 100;
@@ -1021,6 +1021,44 @@ function spawnZombie(x, z) {
   return g;
 }
 
+// Returns true if any house wall lies between point A and point B (2D XZ)
+function wallBetween(a, b) {
+  const ax = a.x, az = a.z, bx = b.x, bz = b.z;
+  const dx = bx - ax, dz = bz - az;
+
+  for (const h of houseBoxes) {
+    // Quick reject — skip houses far from both points
+    const midX = (ax+bx)/2, midZ = (az+bz)/2;
+    if (Math.abs(midX - h.x) > h.W/2 + 5 && Math.abs(midZ - h.z) > h.D/2 + 5) continue;
+
+    const hw = h.W/2, hd = h.D/2;
+    // Test segment against each of the 4 walls (as infinite lines, clipped to wall length)
+    // Wall = line from (x1,z1) to (x2,z2)
+    const walls = [
+      // front wall — two segments (left and right of door gap 0.88 wide)
+      [h.x - hw,       h.z + hd, h.x - 0.88, h.z + hd],
+      [h.x + 0.88,     h.z + hd, h.x + hw,   h.z + hd],
+      // back wall
+      [h.x - hw, h.z - hd, h.x + hw, h.z - hd],
+      // left wall
+      [h.x - hw, h.z - hd, h.x - hw, h.z + hd],
+      // right wall
+      [h.x + hw, h.z - hd, h.x + hw, h.z + hd],
+    ];
+
+    for (const [x1,z1,x2,z2] of walls) {
+      // Segment intersection: (ax,az)→(bx,bz) vs (x1,z1)→(x2,z2)
+      const ex = x2-x1, ez = z2-z1;
+      const denom = dx*ez - dz*ex;
+      if (Math.abs(denom) < 1e-8) continue; // parallel
+      const t = ((x1-ax)*ez - (z1-az)*ex) / denom;
+      const u = ((x1-ax)*dz - (z1-az)*dx) / denom;
+      if (t > 0.05 && t < 0.95 && u >= 0 && u <= 1) return true;
+    }
+  }
+  return false;
+}
+
 function applyZombieWallCollision(zg) {
   // House walls
   for (const h of houseBoxes) {
@@ -1127,9 +1165,15 @@ function updateZombies(dt) {
       if (dist > ZATTACK * 1.8) {
         ud.state = 'chase';
       } else if (ud.atkCool <= 0 && G.alive) {
-        ud.atkCool = ZCOOL;
-        ud.attackAnim = 0.35;
-        takeDamage(ZDMG);
+        // Only deal damage if no wall between zombie and player
+        if (!wallBetween(zg.position, pp)) {
+          ud.atkCool = ZCOOL;
+          ud.attackAnim = 0.35;
+          takeDamage(ZDMG);
+        } else {
+          // Blocked by wall — stop attacking, try to path around
+          ud.state = 'chase';
+        }
       }
     }
 
