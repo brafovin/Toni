@@ -484,8 +484,8 @@ function initThree() {
   camera.position.set(0, PHEIGHT, 10);
   camera.rotation.order = 'YXZ';
 
-  renderer = new THREE.WebGLRenderer({canvas: document.getElementById('gc'), antialias: false});
-  renderer.setPixelRatio(1);
+  renderer = new THREE.WebGLRenderer({canvas: document.getElementById('gc'), antialias: true});
+  renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(innerWidth, innerHeight);
   renderer.shadowMap.enabled = false; // disabled by default for perf; enable in settings
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -512,6 +512,7 @@ function initThree() {
   window.addEventListener('resize', () => {
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
+    renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(innerWidth, innerHeight);
   });
 }
