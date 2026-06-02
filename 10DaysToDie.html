@@ -1795,28 +1795,29 @@ function updatePrompt() {
 function addInv(id, count=1) {
   const def = ITEMS[id]; if (!def) return;
   if (def.stackable) {
-    const ex = G.inventory.find(s=>s.id===id);
+    const ex = G.inventory.find(s=>s&&s.id===id);
     if (ex) { ex.count+=count; updateHotbar(); return; }
   }
-  if (G.inventory.length >= 40) { notify('Inventar voll!'); return; }
-  G.inventory.push({...def, count});
+  const slot = G.inventory.findIndex(s=>!s);
+  if (slot < 0) { notify('Inventar voll!'); return; }
+  G.inventory[slot] = {...def, count};
   updateHotbar();
 }
 
 function removeInv(id, count=1) {
-  const i = G.inventory.findIndex(s=>s.id===id);
+  const i = G.inventory.findIndex(s=>s&&s.id===id);
   if (i<0) return false;
   G.inventory[i].count -= count;
-  if (G.inventory[i].count <= 0) G.inventory.splice(i,1);
+  if (G.inventory[i].count <= 0) G.inventory[i] = null;
   updateHotbar(); return true;
 }
 
 function countInv(id) {
-  const s = G.inventory.find(s=>s.id===id);
+  const s = G.inventory.find(s=>s&&s.id===id);
   return s ? s.count : 0;
 }
 
-function invItem(id) { return G.inventory.find(s=>s.id===id); }
+function invItem(id) { return G.inventory.find(s=>s&&s.id===id); }
 
 let selectedInvSlot = null; // index of slot selected for moving
 
@@ -2022,7 +2023,7 @@ document.getElementById('btnRespawn').addEventListener('click', () => {
 function resetGame() {
   G.hp=100; G.hunger=100; G.thirst=100; G.stamina=100;
   G.alive=true; G.day=1; G.time=0; G.zTimer=0;
-  G.inventory=[{...ITEMS.axe, count:1}];
+  G.inventory=new Array(40).fill(null); G.inventory[0]={...ITEMS.axe,count:1};
   G.activeSlot=0;
   camera.position.set(0,PHEIGHT,10);
   yaw=0; pitch=0;
@@ -2417,7 +2418,7 @@ document.getElementById('btnStart').addEventListener('click', () => {
   document.getElementById('mainMenu').style.display='none';
   document.getElementById('game').style.display='block';
   G.started=true;
-  G.inventory=[{...ITEMS.axe,count:1}];
+  G.inventory=new Array(40).fill(null); G.inventory[0]={...ITEMS.axe,count:1};
   updateBars(); updateHotbar();
   camera.position.set(0,PHEIGHT,10);
   yaw=0; pitch=0; vel.set(0,0,0);
