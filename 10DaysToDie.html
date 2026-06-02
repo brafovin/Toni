@@ -738,59 +738,42 @@ function mkHouse(hx, hz, idx) {
   addWindow(hx + W/2, winY, hz, 'x');
   addWindow(hx, winY, hz - D/2, 'z');
 
-  // === PITCHED ROOF using BufferGeometry ===
-  const ov = 0.6; // overhang
-  const rY = H;   // base of roof (top of walls)
-  const ridgeY = H + RIDGE_H;
-  // 6 vertices: 4 base corners + 2 ridge points
-  const rx1 = hx - W/2 - ov, rx2 = hx + W/2 + ov;
-  const rz1 = hz - D/2 - ov, rz2 = hz + D/2 + ov;
-  const ridgeX1 = hx - W/2 - ov, ridgeX2 = hx + W/2 + ov;
-  const ridgeZ = hz;
-  //   v0: front-left base,  v1: front-right base
-  //   v2: back-right base,  v3: back-left base
-  //   v4: ridge left,       v5: ridge right
-  const verts = new Float32Array([
-    rx1, rY, rz2,  // 0 front-left
-    rx2, rY, rz2,  // 1 front-right
-    rx2, rY, rz1,  // 2 back-right
-    rx1, rY, rz1,  // 3 back-left
-    ridgeX1, ridgeY, ridgeZ,  // 4 ridge left
-    ridgeX2, ridgeY, ridgeZ,  // 5 ridge right
-  ]);
-  // Triangles: front slope (0,1,5,4), back slope (3,2,5 wait — need correct winding)
-  // Front slope: 0,5,4 | 0,1,5
-  // Back slope:  2,3,4 | 2,4,5
-  // Left gable:  0,4,3
-  // Right gable: 1,2,5 | wait: 1,5,2? need CCW from outside
-  // Let's define carefully (CCW from outside):
-  // Front (positive Z): verts 0,1,5,4 — two tris: (0,1,5),(0,5,4)
-  // Back (negative Z):  verts 3,2,... — (2,3,4),(2,4,5)? No: back face: 2,3 at top-far, ridge; (3,2,5) and (3,5,4)
-  // Left gable (negative X): 0,4,3
-  // Right gable (positive X): 1,2,5 -- (1,5,2) hmm; let's just do: (1,2,5) wrong winding... just use both sides
-  // Triangles (CCW winding from outside):
-  const roofGeo = new THREE.BufferGeometry();
-  roofGeo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
-  roofGeo.setIndex(new THREE.BufferAttribute(new Uint16Array([
-    0,1,5, 0,5,4,   // front slope
-    3,2,5, 3,5,4,   // back slope
-    3,4,0,          // left gable
-    1,5,2,          // right gable
-  ]), 1));
-  roofGeo.computeVertexNormals();
-  roofTex.repeat.set(1,1);
-  const roofMesh = new THREE.Mesh(roofGeo, rm);
-  scene.add(roofMesh);
+  // === PITCHED ROOF — two angled BoxGeometry panels ===
+  const ov = 0.6; // eave overhang
+  const slopeRun = D / 2 + ov;           // horizontal distance from eave to ridge
+  const slopeLen = Math.sqrt(slopeRun * slopeRun + RIDGE_H * RIDGE_H);
+  const slopeAngle = Math.atan2(RIDGE_H, slopeRun);
+  const panelW = W + ov * 2;
+  const panelThick = 0.3;
+  // Panel center is halfway along the slope, both horizontally and vertically
+  const panelCY = H + RIDGE_H / 2;
+  const panelCZ_front = hz + slopeRun / 2;
+  const panelCZ_back  = hz - slopeRun / 2;
 
-  // Gable fill triangles (solid wall between roof eaves and wall top on front/back)
-  // Front gable box approximation — actual triangular prism wedge
-  // Use two narrow boxes stacked to approximate the gable triangle
-  for (let side of [-1, 1]) {
-    const gz = hz + side * (D/2);
-    // Bottom half gable
-    box(wm, W + ov*2, RIDGE_H * 0.5, WT, hx, H + RIDGE_H*0.25, gz);
-    // Top half gable (narrower)
-    box(wm, (W + ov*2)*0.5, RIDGE_H * 0.5, WT, hx, H + RIDGE_H*0.75, gz);
+  const frontPanel = new THREE.Mesh(new THREE.BoxGeometry(panelW, panelThick, slopeLen), rm);
+  frontPanel.position.set(hx, panelCY, panelCZ_front);
+  frontPanel.rotation.x = -slopeAngle;
+  scene.add(frontPanel);
+
+  const backPanel = new THREE.Mesh(new THREE.BoxGeometry(panelW, panelThick, slopeLen), rm);
+  backPanel.position.set(hx, panelCY, panelCZ_back);
+  backPanel.rotation.x = slopeAngle;
+  scene.add(backPanel);
+
+  // Ridge cap (thin box along the top)
+  box(rm, panelW, panelThick * 1.2, panelThick * 1.5, hx, H + RIDGE_H + panelThick * 0.4, hz);
+
+  // Gable ends: 3 stacked boxes narrowing toward peak to approximate a triangle
+  for (const side of [-1, 1]) {
+    const gz = hz + side * (D / 2);
+    const geoSteps = 4;
+    for (let s = 0; s < geoSteps; s++) {
+      const t0 = s / geoSteps, t1 = (s + 1) / geoSteps;
+      const midT = (t0 + t1) / 2;
+      const segH = RIDGE_H / geoSteps;
+      const segW = (W + ov * 2) * (1 - midT);
+      box(wm, segW, segH, WT, hx, H + midT * RIDGE_H + segH / 2, gz);
+    }
   }
 
   // Interior ceiling
@@ -862,11 +845,22 @@ function genRoads() {
     }
   }
 
-  // Connect each house to its nearest neighbour (simple network)
+  // Returns the point on house h's perimeter facing toward (tx, tz), plus a gap
+  function houseExit(h, tx, tz) {
+    const dx = tx - h.x, dz = tz - h.z;
+    const dist = Math.hypot(dx, dz) || 1;
+    const nx = dx / dist, nz = dz / dist;
+    // How far along each axis to reach the wall
+    const tX = Math.abs(nx) > 1e-6 ? (h.W / 2 + 1.5) / Math.abs(nx) : Infinity;
+    const tZ = Math.abs(nz) > 1e-6 ? (h.D / 2 + 1.5) / Math.abs(nz) : Infinity;
+    const t = Math.min(tX, tZ);
+    return { x: h.x + nx * t, z: h.z + nz * t };
+  }
+
+  // Connect each house to its nearest neighbours (roads stop at house walls)
   const connected = new Set();
   for (let i = 0; i < houseBoxes.length; i++) {
     const a = houseBoxes[i];
-    // Find 2 nearest houses
     const sorted = houseBoxes
       .map((b, j) => ({ j, d: Math.hypot(b.x-a.x, b.z-a.z) }))
       .filter(e => e.j !== i)
@@ -878,7 +872,9 @@ function genRoads() {
       if (connected.has(key)) continue;
       connected.add(key);
       const b = houseBoxes[j];
-      mkSegment(a.x, a.z, b.x, b.z);
+      const pa = houseExit(a, b.x, b.z);
+      const pb = houseExit(b, a.x, a.z);
+      mkSegment(pa.x, pa.z, pb.x, pb.z);
     }
   }
 
