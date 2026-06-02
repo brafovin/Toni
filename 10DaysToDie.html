@@ -258,9 +258,9 @@ canvas{display:block;}
   <!-- PAUSE -->
   <div id="pauseMenu">
     <h2>PAUSE</h2>
-    <button class="mbtn" id="btnResume">▶ WEITER</button>
+    <button class="mbtn" id="btnResume">▶ SPIELEN</button>
     <button class="mbtn" id="btnPauseSet">⚙ EINSTELLUNGEN</button>
-    <button class="mbtn" id="btnToMenu">⌂ HAUPTMENÜ</button>
+    <button class="mbtn" id="btnQuitGame">✕ SPIEL VERLASSEN</button>
   </div>
 
   <!-- DEATH -->
@@ -1812,14 +1812,35 @@ function togglePause() {
   else document.exitPointerLock();
 }
 
-document.getElementById('btnResume').addEventListener('click',  () => { G.paused=false; document.getElementById('pauseMenu').style.display='none'; document.getElementById('gc').requestPointerLock(); });
-document.getElementById('btnPauseSet').addEventListener('click',() => { openModal('setModal'); document.getElementById('pauseMenu').style.display='none'; });
-document.getElementById('btnToMenu').addEventListener('click',  () => {
-  document.getElementById('pauseMenu').style.display='none';
-  document.getElementById('game').style.display='none';
-  document.getElementById('mainMenu').style.display='flex';
-  G.started=false; G.paused=false;
-  document.exitPointerLock();
+document.getElementById('btnResume').addEventListener('click', () => {
+  G.paused = false;
+  document.getElementById('pauseMenu').style.display = 'none';
+  document.getElementById('gc').requestPointerLock();
+});
+
+document.getElementById('btnPauseSet').addEventListener('click', () => {
+  document.getElementById('pauseMenu').style.display = 'none';
+  openModal('setModal');
+  // Wenn Einstellungen geschlossen werden, Pause-Menü wieder zeigen
+  const orig = document.getElementById('clSet').onclick;
+  document.getElementById('clSet').onclick = () => {
+    closeModal('setModal');
+    if (G.started && G.alive) {
+      document.getElementById('pauseMenu').style.display = 'flex';
+    }
+    document.getElementById('clSet').onclick = orig;
+  };
+});
+
+document.getElementById('btnQuitGame').addEventListener('click', () => {
+  if (confirm('Spiel wirklich verlassen? Fortschritt geht verloren.')) {
+    document.getElementById('pauseMenu').style.display = 'none';
+    document.getElementById('game').style.display = 'none';
+    document.getElementById('mainMenu').style.display = 'flex';
+    G.started = false;
+    G.paused  = false;
+    document.exitPointerLock();
+  }
 });
 
 // ═══════════════════════════════════════════════════════════
