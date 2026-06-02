@@ -1288,11 +1288,11 @@ function updatePlayer(dt) {
   // Build mode preview
   if (G.buildMode && buildPreview) {
     raycaster.setFromCamera(new THREE.Vector2(0,0), camera);
-    const gd = scene.children.find(c => c.name==='ground');
-    const hits = raycaster.intersectObject(gd||scene, true);
-    if (hits.length > 0) {
-      const p = hits[0].point;
-      buildPreview.position.set(Math.round(p.x), 0.5, Math.round(p.z));
+    const hits = raycaster.intersectObjects(scene.children, true);
+    const hit = hits.find(h => h.object !== buildPreview);
+    if (hit) {
+      const p = hit.point;
+      buildPreview.position.set(Math.round(p.x), Math.round(p.y) + 0.5, Math.round(p.z));
     }
   }
 
@@ -1304,20 +1304,18 @@ function onLMB() {
   atkCool = 0.45;
 
   if (G.buildMode) {
-    // Place block
     const item = invItem('block');
-    if (!item) { notify('Kein Baublock im Inventar!'); return; }
-    if (buildPreview) {
-      const geo = new THREE.BoxGeometry(1,1,1);
-      const mat = new THREE.MeshLambertMaterial({color:0x8888cc});
-      const bm = new THREE.Mesh(geo, mat);
-      bm.position.copy(buildPreview.position);
-      bm.castShadow = b
-      scene.add(bm);
-      placedMeshes.push(bm);
-      removeInv('block',1);
-      notify('Block platziert!');
-    }
+    if (!item) { notify('Kein Baublock im Inventar! (C zum Craften)'); return; }
+    if (!buildPreview) { notify('Kein Platzierungsziel gefunden!'); return; }
+    const bm = new THREE.Mesh(
+      new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshLambertMaterial({ color: 0x7788bb })
+    );
+    bm.position.copy(buildPreview.position);
+    scene.add(bm);
+    placedMeshes.push(bm);
+    removeInv('block', 1);
+    notify('🧱 Block platziert!');
     return;
   }
 
