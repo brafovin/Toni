@@ -1697,7 +1697,15 @@ function onLMB() {
     if (cd.dot(zd) > 0.6) {
       const slot = G.inventory[G.activeSlot];
       let dmg = AXE_DMG;
-      if (slot?.type==='weapon') dmg = slot.dmg;
+      if (slot?.type==='weapon') {
+        if (slot.ammo) {
+          const ammoId = slot.ammo;
+          if (countInv(ammoId) <= 0) { notify('Keine Munition!'); return; }
+          removeInv(ammoId, 1);
+          updateHotbar();
+        }
+        dmg = slot.dmg;
+      }
       hurtZombie(zg, dmg);
       return;
     }
