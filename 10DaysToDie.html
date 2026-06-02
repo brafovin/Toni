@@ -679,6 +679,81 @@ function genHouses() {
   }
 }
 
+function genRoads() {
+  const roadMat  = new THREE.MeshLambertMaterial({ color: 0x444440 });
+  const lineMat  = new THREE.MeshLambertMaterial({ color: 0xcccc88 });
+  const roadW    = 5;
+  const lineW    = 0.18;
+  const lineLen  = 3.5;
+  const lineGap  = 3.0;
+
+  // One road segment between two points
+  function mkSegment(x1, z1, x2, z2) {
+    const dx = x2 - x1, dz = z2 - z1;
+    const len = Math.hypot(dx, dz);
+    if (len < 1) return;
+    const cx = (x1+x2)/2, cz = (z1+z2)/2;
+    const angle = Math.atan2(dx, dz);
+
+    // Road surface
+    const road = new THREE.Mesh(new THREE.PlaneGeometry(roadW, len), roadMat);
+    road.rotation.x = -Math.PI/2;
+    road.rotation.z = -angle; // PlaneGeometry lies in XZ after rotation
+    road.position.set(cx, 0.01, cz);
+    // Fix: use rotation order
+    road.rotation.set(-Math.PI/2, 0, angle);
+    scene.add(road);
+
+    // Dashed center line
+    let drawn = 0;
+    while (drawn + lineLen < len) {
+      const t = (drawn + lineLen/2) / len;
+      const lx = x1 + dx*t, lz = z1 + dz*t;
+      const line = new THREE.Mesh(new THREE.PlaneGeometry(lineW, lineLen), lineMat);
+      line.rotation.set(-Math.PI/2, 0, angle);
+      line.position.set(lx, 0.02, lz);
+      scene.add(line);
+      drawn += lineLen + lineGap;
+    }
+  }
+
+  // Connect each house to its nearest neighbour (simple network)
+  const connected = new Set();
+  for (let i = 0; i < houseBoxes.length; i++) {
+    const a = houseBoxes[i];
+    // Find 2 nearest houses
+    const sorted = houseBoxes
+      .map((b, j) => ({ j, d: Math.hypot(b.x-a.x, b.z-a.z) }))
+      .filter(e => e.j !== i)
+      .sort((p, q) => p.d - q.d)
+      .slice(0, 2);
+
+    for (const { j } of sorted) {
+      const key = i < j ? `${i}_${j}` : `${j}_${i}`;
+      if (connected.has(key)) continue;
+      connected.add(key);
+      const b = houseBoxes[j];
+      mkSegment(a.x, a.z, b.x, b.z);
+    }
+  }
+
+  // A few long straight roads through the map (grid-like main roads)
+  const mainMat = new THREE.MeshLambertMaterial({ color: 0x3a3a38 });
+  for (let i = -2; i <= 2; i++) {
+    const offset = i * 180;
+    // Horizontal
+    const rh = new THREE.Mesh(new THREE.PlaneGeometry(WSIZ, roadW+2), mainMat);
+    rh.rotation.x = -Math.PI/2;
+    rh.position.set(0, 0.005, offset);
+    scene.add(rh);
+    // Vertical
+    const rv = new THREE.Mesh(new THREE.PlaneGeometry(roadW+2, WSIZ), mainMat);
+    rv.rotation.x = -Math.PI/2;
+    rv.position.set(offset, 0.005, 0);
+    scene.add(rv);
+  }
+}
+
 function mkCampfire(x, z) {
   const g = new THREE.Group();
   g.position.set(x, 0, z);
@@ -1241,19 +1316,22 @@ function updatePlayer(dt) {
     }
   }
 
-  // Placed block collision (AABB, 1x1x1 blocks)
-  const R = 0.45; // player radius
+  // Placed block collision (AABB, 1x1x1)
+  const BRAD = 0.45; // player horizontal radius
   for (const b of placedMeshes) {
     const bx = b.position.x, by = b.position.y, bz = b.position.z;
-    const py = camera.position.y;
-    // Only check if vertically overlapping
-    if (py < by - 0.5 - PHEIGHT || py > by + 0.5 + 0.1) continue;
+    // Player occupies from feet (camera.y - PHEIGHT) to head (camera.y)
+    const pFeet = camera.position.y - PHEIGHT;
+    const pHead = camera.position.y;
+    const bBot  = by - 0.5;
+    const bTop  = by + 0.5;
+    // Skip if no vertical overlap
+    if (pFeet >= bTop || pHead <= bBot) continue;
     const dx = camera.position.x - bx;
     const dz = camera.position.z - bz;
-    const ox = 0.5 + R - Math.abs(dx);
-    const oz = 0.5 + R - Math.abs(dz);
+    const ox = 0.5 + BRAD - Math.abs(dx);
+    const oz = 0.5 + BRAD - Math.abs(dz);
     if (ox > 0 && oz > 0) {
-      // Push out along smallest overlap axis
       if (ox < oz) camera.position.x += Math.sign(dx) * ox;
       else         camera.position.z += Math.sign(dz) * oz;
     }
@@ -1968,6 +2046,10 @@ async function load() {
     await sl(80);
   }
   genHouses();
+
+  prog(55,'Generiere Straßen...');
+  await sl(200);
+  genRoads();
 
   prog(60,'Pflanze Bäume...');
   await sl(200);
