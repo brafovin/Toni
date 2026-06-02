@@ -1241,6 +1241,24 @@ function updatePlayer(dt) {
     }
   }
 
+  // Placed block collision (AABB, 1x1x1 blocks)
+  const R = 0.45; // player radius
+  for (const b of placedMeshes) {
+    const bx = b.position.x, by = b.position.y, bz = b.position.z;
+    const py = camera.position.y;
+    // Only check if vertically overlapping
+    if (py < by - 0.5 - PHEIGHT || py > by + 0.5 + 0.1) continue;
+    const dx = camera.position.x - bx;
+    const dz = camera.position.z - bz;
+    const ox = 0.5 + R - Math.abs(dx);
+    const oz = 0.5 + R - Math.abs(dz);
+    if (ox > 0 && oz > 0) {
+      // Push out along smallest overlap axis
+      if (ox < oz) camera.position.x += Math.sign(dx) * ox;
+      else         camera.position.z += Math.sign(dz) * oz;
+    }
+  }
+
   // House wall collision — per-wall with door gap
   for (const h of houseBoxes) {
     if (Math.abs(camera.position.x - h.x) > h.W/2+3 || Math.abs(camera.position.z - h.z) > h.D/2+3) continue;
