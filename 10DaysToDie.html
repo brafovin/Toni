@@ -248,6 +248,9 @@ canvas{display:block;}
     <div class="hslot" id="hs3"></div>
     <div class="hslot" id="hs4"></div>
   </div>
+  <div style="position:fixed;bottom:2px;left:50%;transform:translateX(-50%);color:#666;font-size:10px;font-family:'Courier New';pointer-events:none;z-index:20;">
+    [ E ] Benutzen &nbsp;|&nbsp; [ Tab ] Inventar &nbsp;|&nbsp; [ C ] Crafting &nbsp;|&nbsp; [ Q ] Bauen
+  </div>
 
   <div id="dayco">TAG 1</div>
   <div id="ammohud"></div>
@@ -440,7 +443,7 @@ let G = {
   currentFire:null,
   settings:{
     bright:1.0, quality:'medium', fov:75, sens:1.5,
-    keys:{forward:'w',backward:'s',left:'a',right:'d',jump:' ',inv:'e',craft:'c'}
+    keys:{forward:'w',backward:'s',left:'a',right:'d',jump:' ',inv:'tab',craft:'c'}
   }
 };
 
@@ -1385,11 +1388,13 @@ function onKey(e) {
     else togglePause();
     return;
   }
+  if (k === 'tab') { e.preventDefault(); } // prevent browser tab-switch
   if (!G.started || !G.alive) return;
 
   const ks = G.settings.keys;
   if (k === ks.inv)   { toggleModal('invModal');   renderInv(); }
   if (k === ks.craft) { toggleModal('craftModal'); renderCraft(); }
+  if (k === 'e') useHotbarItem();
   if (['1','2','3','4','5'].includes(k)) {
     G.activeSlot = parseInt(k)-1;
     updateHotbar();
@@ -1718,6 +1723,12 @@ function renderInv() {
     }
     grid.appendChild(d);
   }
+}
+
+function useHotbarItem() {
+  const it = G.inventory[G.activeSlot];
+  if (!it) { notify('Kein Item in diesem Slot!'); return; }
+  useItem(G.activeSlot);
 }
 
 function useItem(i) {
@@ -2072,7 +2083,7 @@ function applyQuality(q) {
   sun.shadow.mapSize.set(q==='ultra'?2048:1024, q==='ultra'?2048:1024);
 }
 
-const KB_LABELS = {forward:'Vorwärts',backward:'Rückwärts',left:'Links',right:'Rechts',jump:'Springen',inv:'Inventar',craft:'Crafting'};
+const KB_LABELS = {forward:'Vorwärts',backward:'Rückwärts',left:'Links',right:'Rechts',jump:'Springen',inv:'Inventar (Tab)',craft:'Crafting'};
 
 function renderKeybinds() {
   const c = document.getElementById('kbList'); c.innerHTML='';
