@@ -825,11 +825,8 @@ function genRoads() {
 
     // Road surface
     const road = new THREE.Mesh(new THREE.PlaneGeometry(roadW, len), roadMat);
-    road.rotation.x = -Math.PI/2;
-    road.rotation.z = -angle; // PlaneGeometry lies in XZ after rotation
+    road.rotation.set(-Math.PI/2, angle, 0);
     road.position.set(cx, 0.01, cz);
-    // Fix: use rotation order
-    road.rotation.set(-Math.PI/2, 0, angle);
     scene.add(road);
 
     // Dashed center line
@@ -838,7 +835,7 @@ function genRoads() {
       const t = (drawn + lineLen/2) / len;
       const lx = x1 + dx*t, lz = z1 + dz*t;
       const line = new THREE.Mesh(new THREE.PlaneGeometry(lineW, lineLen), lineMat);
-      line.rotation.set(-Math.PI/2, 0, angle);
+      line.rotation.set(-Math.PI/2, angle, 0);
       line.position.set(lx, 0.02, lz);
       scene.add(line);
       drawn += lineLen + lineGap;
