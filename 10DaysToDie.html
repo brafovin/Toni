@@ -593,23 +593,84 @@ function mkChest(x, y, z) {
   chests.push(m);
 }
 
+// --- Cached house textures ---
+const _houseTexCache = {};
+function getWallTex(colorHex) {
+  if (_houseTexCache['w'+colorHex]) return _houseTexCache['w'+colorHex];
+  const sz = 256;
+  const cv = document.createElement('canvas'); cv.width = sz; cv.height = sz;
+  const cx = cv.getContext('2d');
+  // base color
+  const r = (colorHex>>16)&0xff, g = (colorHex>>8)&0xff, b = colorHex&0xff;
+  cx.fillStyle = `rgb(${r},${g},${b})`;
+  cx.fillRect(0, 0, sz, sz);
+  // brick rows
+  const bH = 24, bW = 56, mortar = 3;
+  cx.fillStyle = `rgba(0,0,0,0.18)`;
+  for (let row = 0; row * bH < sz; row++) {
+    const offX = (row % 2) * (bW / 2);
+    for (let col = -1; col * bW < sz; col++) {
+      const bx = col * bW + offX;
+      cx.fillRect(bx, row * bH, bW - mortar, bH - mortar);
+    }
+    // horizontal mortar line
+    cx.fillStyle = `rgba(0,0,0,0.12)`;
+    cx.fillRect(0, row * bH + bH - mortar, sz, mortar);
+    cx.fillStyle = `rgba(0,0,0,0.18)`;
+  }
+  // slight noise / variation
+  for (let i = 0; i < 400; i++) {
+    const px = Math.random()*sz, py = Math.random()*sz;
+    const v = (Math.random()-0.5)*30;
+    cx.fillStyle = `rgba(${v>0?255:0},${v>0?255:0},${v>0?255:0},${Math.abs(v)/255*0.4})`;
+    cx.fillRect(px, py, 4, 4);
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  _houseTexCache['w'+colorHex] = tex;
+  return tex;
+}
+function getRoofTex(colorHex) {
+  if (_houseTexCache['r'+colorHex]) return _houseTexCache['r'+colorHex];
+  const sz = 128;
+  const cv = document.createElement('canvas'); cv.width = sz; cv.height = sz;
+  const cx = cv.getContext('2d');
+  const r = (colorHex>>16)&0xff, g = (colorHex>>8)&0xff, b = colorHex&0xff;
+  cx.fillStyle = `rgb(${r},${g},${b})`;
+  cx.fillRect(0, 0, sz, sz);
+  // tile lines
+  cx.strokeStyle = `rgba(0,0,0,0.25)`;
+  cx.lineWidth = 2;
+  for (let y = 0; y < sz; y += 18) { cx.beginPath(); cx.moveTo(0,y); cx.lineTo(sz,y); cx.stroke(); }
+  for (let x = 0; x < sz; x += 22) { cx.beginPath(); cx.moveTo(x,0); cx.lineTo(x,sz); cx.stroke(); }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  _houseTexCache['r'+colorHex] = tex;
+  return tex;
+}
+
 function mkHouse(hx, hz, idx) {
-  // Fixed sizes — no random variation to avoid geometry mismatches
   const W = 10 + (idx % 4) * 2;   // 10, 12, 14, 16
   const D = 8  + (idx % 3) * 2;   // 8, 10, 12
-  const H = 5.5;                   // wall height
-  const WT = 0.3;                  // wall thickness
-  const DOOR_W = 1.6;              // door opening width
-  const DOOR_H = 2.6;              // door opening height
+  const H = 7.0;                   // taller walls
+  const WT = 0.3;
+  const DOOR_W = 1.6;
+  const DOOR_H = 2.8;
+  const RIDGE_H = 3.2;             // how high the roof peak rises above walls
 
   const wallC = [0xd4b483,0xc49a6c,0xbba877,0xc8a96e,0xd2b48c,0xc8b89a][idx%6];
   const roofC = [0x8b4513,0x6b3a2a,0x5c3317,0x704214,0x9b5523,0x7a3c18][idx%6];
-  const wm  = new THREE.MeshLambertMaterial({ color: wallC });
-  const rm  = new THREE.MeshLambertMaterial({ color: roofC });
+
+  const wallTex = getWallTex(wallC);
+  wallTex.repeat.set(W/3, H/3);
+  const wm  = new THREE.MeshLambertMaterial({ map: wallTex });
+  const roofTex = getRoofTex(roofC);
+  const rm  = new THREE.MeshLambertMaterial({ map: roofTex, color: roofC });
   const fm  = new THREE.MeshLambertMaterial({ color: 0x7a7060 });
   const dm  = new THREE.MeshLambertMaterial({ color: 0x3a2010 });
   const wdm = new THREE.MeshLambertMaterial({ color: 0x6ab0d4, transparent:true, opacity:0.55 });
-  const fdm = new THREE.MeshLambertMaterial({ color: 0x555548 }); // concrete floor
+  const fdm = new THREE.MeshLambertMaterial({ color: 0x555548 });
+  const frameMat = new THREE.MeshLambertMaterial({ color: 0x2a1a0a });
 
   function box(mat, w, h, d, px, py, pz) {
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
@@ -618,91 +679,133 @@ function mkHouse(hx, hz, idx) {
     return m;
   }
 
-  // Ground floor (concrete slab, flush with terrain)
+  // Ground floor slab
   box(fdm, W, 0.15, D, hx, 0.075, hz);
 
-  // === WALLS — all Y positions relative to ground (y=0) ===
-  const wallY = H / 2;   // center of a full-height wall
+  const wallY = H / 2;
 
-  // Back wall (full, no door)
+  // Back wall
   box(wm, W, H, WT, hx, wallY, hz - D/2);
-
-  // Left wall (full)
+  // Left wall
   box(wm, WT, H, D, hx - W/2, wallY, hz);
-
-  // Right wall (full)
+  // Right wall
   box(wm, WT, H, D, hx + W/2, wallY, hz);
 
-  // Front wall — split into left segment, right segment, and lintel above door
+  // Front wall split
   const sideW = (W - DOOR_W) / 2;
-  // Left segment
-  box(wm, sideW, H, WT, hx - W/2 + sideW/2,  wallY,       hz + D/2);
-  // Right segment
-  box(wm, sideW, H, WT, hx + W/2 - sideW/2,  wallY,       hz + D/2);
-  // Lintel (above door opening)
+  box(wm, sideW, H, WT, hx - W/2 + sideW/2, wallY, hz + D/2);
+  box(wm, sideW, H, WT, hx + W/2 - sideW/2, wallY, hz + D/2);
   box(wm, DOOR_W, H - DOOR_H, WT, hx, DOOR_H + (H - DOOR_H)/2, hz + D/2);
 
-  // === DOOR (swinging, pivot at left edge of opening) ===
+  // Door frame (dark border)
+  const dfT = 0.12; // frame thickness
+  box(frameMat, dfT, DOOR_H, WT*2, hx - DOOR_W/2 - dfT/2, DOOR_H/2, hz + D/2);
+  box(frameMat, dfT, DOOR_H, WT*2, hx + DOOR_W/2 + dfT/2, DOOR_H/2, hz + D/2);
+  box(frameMat, DOOR_W + dfT*2, dfT, WT*2, hx, DOOR_H + dfT/2, hz + D/2);
+
+  // Door (swinging)
   const doorPivot = new THREE.Group();
   doorPivot.position.set(hx - DOOR_W/2, 0, hz + D/2);
-  const doorMesh = new THREE.Mesh(
-    new THREE.BoxGeometry(DOOR_W - 0.05, DOOR_H - 0.05, 0.08),
-    dm
-  );
+  const doorMesh = new THREE.Mesh(new THREE.BoxGeometry(DOOR_W - 0.05, DOOR_H - 0.05, 0.08), dm);
   doorMesh.position.set(DOOR_W/2, DOOR_H/2, 0);
   doorPivot.add(doorMesh);
   doorPivot.userData = { type:'door', open:false, targetAngle:0, hx, hz };
   scene.add(doorPivot);
   doors.push(doorPivot);
 
-  // === WINDOWS ===
-  const winY = DOOR_H * 0.65;
-  // Front windows (one each side of door)
-  box(wdm, 1.3, 1.0, 0.1, hx - W/2 + sideW*0.55, winY, hz + D/2);
-  box(wdm, 1.3, 1.0, 0.1, hx + W/2 - sideW*0.55, winY, hz + D/2);
-  // Side windows
-  box(wdm, 0.1, 1.0, 1.3, hx - W/2, winY, hz);
-  box(wdm, 0.1, 1.0, 1.3, hx + W/2, winY, hz);
-  // Back window
-  box(wdm, 1.3, 1.0, 0.1, hx, winY, hz - D/2);
+  // Windows with frames
+  const winY = H * 0.52;
+  const winW = 1.4, winH = 1.2, winFr = 0.12;
+  function addWindow(wx, wy, wz, axis) {
+    const isZ = axis === 'z';
+    if (isZ) {
+      box(wdm, winW, winH, 0.12, wx, wy, wz);
+      box(frameMat, winW + winFr*2, winFr, 0.2, wx, wy - winH/2 - winFr/2, wz);
+      box(frameMat, winW + winFr*2, winFr, 0.2, wx, wy + winH/2 + winFr/2, wz);
+      box(frameMat, winFr, winH, 0.2, wx - winW/2 - winFr/2, wy, wz);
+      box(frameMat, winFr, winH, 0.2, wx + winW/2 + winFr/2, wy, wz);
+    } else {
+      box(wdm, 0.12, winH, winW, wx, wy, wz);
+      box(frameMat, 0.2, winFr, winW + winFr*2, wx, wy - winH/2 - winFr/2, wz);
+      box(frameMat, 0.2, winFr, winW + winFr*2, wx, wy + winH/2 + winFr/2, wz);
+      box(frameMat, 0.2, winH, winFr, wx, wy, wz - winW/2 - winFr/2);
+      box(frameMat, 0.2, winH, winFr, wx, wy, wz + winW/2 + winFr/2);
+    }
+  }
+  addWindow(hx - W/2 + sideW*0.55, winY, hz + D/2, 'z');
+  addWindow(hx + W/2 - sideW*0.55, winY, hz + D/2, 'z');
+  addWindow(hx - W/2, winY, hz, 'x');
+  addWindow(hx + W/2, winY, hz, 'x');
+  addWindow(hx, winY, hz - D/2, 'z');
 
-  // === ROOF (flat overhang) ===
-  box(rm, W + 1.0, 0.4, D + 1.0, hx, H + 0.2, hz);
+  // === PITCHED ROOF using BufferGeometry ===
+  const ov = 0.6; // overhang
+  const rY = H;   // base of roof (top of walls)
+  const ridgeY = H + RIDGE_H;
+  // 6 vertices: 4 base corners + 2 ridge points
+  const rx1 = hx - W/2 - ov, rx2 = hx + W/2 + ov;
+  const rz1 = hz - D/2 - ov, rz2 = hz + D/2 + ov;
+  const ridgeX1 = hx - W/2 - ov, ridgeX2 = hx + W/2 + ov;
+  const ridgeZ = hz;
+  //   v0: front-left base,  v1: front-right base
+  //   v2: back-right base,  v3: back-left base
+  //   v4: ridge left,       v5: ridge right
+  const verts = new Float32Array([
+    rx1, rY, rz2,  // 0 front-left
+    rx2, rY, rz2,  // 1 front-right
+    rx2, rY, rz1,  // 2 back-right
+    rx1, rY, rz1,  // 3 back-left
+    ridgeX1, ridgeY, ridgeZ,  // 4 ridge left
+    ridgeX2, ridgeY, ridgeZ,  // 5 ridge right
+  ]);
+  // Triangles: front slope (0,1,5,4), back slope (3,2,5 wait — need correct winding)
+  // Front slope: 0,5,4 | 0,1,5
+  // Back slope:  2,3,4 | 2,4,5
+  // Left gable:  0,4,3
+  // Right gable: 1,2,5 | wait: 1,5,2? need CCW from outside
+  // Let's define carefully (CCW from outside):
+  // Front (positive Z): verts 0,1,5,4 — two tris: (0,1,5),(0,5,4)
+  // Back (negative Z):  verts 3,2,... — (2,3,4),(2,4,5)? No: back face: 2,3 at top-far, ridge; (3,2,5) and (3,5,4)
+  // Left gable (negative X): 0,4,3
+  // Right gable (positive X): 1,2,5 -- (1,5,2) hmm; let's just do: (1,2,5) wrong winding... just use both sides
+  // Triangles (CCW winding from outside):
+  const roofGeo = new THREE.BufferGeometry();
+  roofGeo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+  roofGeo.setIndex(new THREE.BufferAttribute(new Uint16Array([
+    0,1,5, 0,5,4,   // front slope
+    3,2,5, 3,5,4,   // back slope
+    3,4,0,          // left gable
+    1,5,2,          // right gable
+  ]), 1));
+  roofGeo.computeVertexNormals();
+  roofTex.repeat.set(1,1);
+  const roofMesh = new THREE.Mesh(roofGeo, rm);
+  scene.add(roofMesh);
 
-  // Gable ends (triangular fill — approximated with a box)
-  box(rm, W + 1.0, 1.2, WT*1.5, hx, H + 0.2 + 0.6, hz - D/2 - 0.1);
-  box(rm, W + 1.0, 1.2, WT*1.5, hx, H + 0.2 + 0.6, hz + D/2 + 0.1);
-
-  // Ridge beam
-  const ridgeGeo = new THREE.CylinderGeometry(0.18, 0.18, D + 1.2, 6);
-  const ridgeMesh = new THREE.Mesh(ridgeGeo, rm);
-  ridgeMesh.rotation.x = Math.PI / 2;   // align along Z axis
-  ridgeMesh.position.set(hx, H + 0.2 + 1.0, hz);
-  scene.add(ridgeMesh);
-
-  // === INTERIOR ===
-  // Ceiling
-  box(fm, W - WT*2, 0.12, D - WT*2, hx, H - 0.06, hz);
-
-  // Chests inside
-  const nc = Math.floor(Math.random()*2) + 1;
-  for (let i = 0; i < nc; i++) {
-    mkChest(
-      hx + (Math.random() - 0.5) * (W - 2.5),
-      0.15,
-      hz + (Math.random() - 0.5) * (D - 2.5)
-    );
+  // Gable fill triangles (solid wall between roof eaves and wall top on front/back)
+  // Front gable box approximation — actual triangular prism wedge
+  // Use two narrow boxes stacked to approximate the gable triangle
+  for (let side of [-1, 1]) {
+    const gz = hz + side * (D/2);
+    // Bottom half gable
+    box(wm, W + ov*2, RIDGE_H * 0.5, WT, hx, H + RIDGE_H*0.25, gz);
+    // Top half gable (narrower)
+    box(wm, (W + ov*2)*0.5, RIDGE_H * 0.5, WT, hx, H + RIDGE_H*0.75, gz);
   }
 
-  // Collision record
+  // Interior ceiling
+  box(fm, W - WT*2, 0.12, D - WT*2, hx, H - 0.06, hz);
+
+  // Chests
+  const nc = Math.floor(Math.random()*2) + 1;
+  for (let i = 0; i < nc; i++) {
+    mkChest(hx+(Math.random()-0.5)*(W-2.5), 0.15, hz+(Math.random()-0.5)*(D-2.5));
+  }
+
   houseBoxes.push({ x: hx, z: hz, W, D });
 
-  // Zombies near/inside house
   for (let i = 0; i < ZPH; i++) {
-    spawnZombie(
-      hx + (Math.random() - 0.5) * (W + 6),
-      hz + (Math.random() - 0.5) * (D + 6)
-    );
+    spawnZombie(hx+(Math.random()-0.5)*(W+6), hz+(Math.random()-0.5)*(D+6));
   }
 }
 
