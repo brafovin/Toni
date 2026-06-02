@@ -207,6 +207,47 @@ canvas{display:block;}
 
 /* SECTION HEADERS */
 .sh{color:#777;font-size:12px;margin:16px 0 6px;letter-spacing:2px;border-bottom:1px solid #2a2a2a;padding-bottom:4px;}
+
+/* HUB UI */
+#hubTopBar{
+  position:fixed;top:0;left:0;right:0;height:48px;
+  background:rgba(0,0,0,0.55);backdrop-filter:blur(6px);
+  display:none;align-items:center;justify-content:center;
+  z-index:30;pointer-events:none;
+}
+#hubTopBar .hub-title{
+  font-size:22px;font-weight:bold;letter-spacing:5px;
+  color:#fff;text-shadow:0 0 18px #ffe066,0 0 36px #ffaa00;
+  font-family:'Courier New',monospace;
+}
+#hubTopBar .hub-avatar{
+  position:absolute;right:18px;top:50%;transform:translateY(-50%);
+  font-size:28px;
+}
+#hubBottomHint{
+  position:fixed;bottom:12px;left:50%;transform:translateX(-50%);
+  color:rgba(255,255,255,0.75);font-size:13px;
+  background:rgba(0,0,0,0.5);padding:7px 24px;border-radius:20px;
+  letter-spacing:1px;display:none;z-index:30;pointer-events:none;
+  font-family:'Courier New',monospace;
+}
+#hubInteract{
+  position:fixed;top:58%;left:50%;transform:translateX(-50%);
+  color:#fff;font-size:16px;background:rgba(0,0,0,0.78);
+  padding:10px 28px;border-radius:6px;border:2px solid #ffe066;
+  display:none;z-index:30;pointer-events:none;
+  font-family:'Courier New',monospace;letter-spacing:2px;
+  text-shadow:0 0 10px #ffe066;
+}
+#btnBackToHub{
+  position:fixed;top:14px;left:14px;z-index:25;
+  padding:9px 20px;font-size:13px;cursor:pointer;
+  background:rgba(0,0,0,0.7);border:2px solid #555;color:#e0c090;
+  font-family:'Courier New',monospace;letter-spacing:2px;
+  border-radius:4px;display:none;
+  transition:all 0.2s;
+}
+#btnBackToHub:hover{background:#333;border-color:#888;color:#fff;}
 </style>
 </head>
 <body>
@@ -220,6 +261,14 @@ canvas{display:block;}
   <div id="lStatus">Initialisiere...</div>
 </div>
 
+<!-- HUB UI OVERLAYS -->
+<div id="hubTopBar">
+  <span class="hub-title">🎮 TONI'S GAME HUB</span>
+  <span class="hub-avatar">👤</span>
+</div>
+<div id="hubBottomHint">WASD Bewegen &nbsp;|&nbsp; Maus Schauen &nbsp;|&nbsp; E Spielen</div>
+<div id="hubInteract"></div>
+
 <!-- MAIN MENU -->
 <div id="mainMenu">
   <h1>10 DAYS TO DIE</h1>
@@ -231,6 +280,7 @@ canvas{display:block;}
 <!-- GAME -->
 <div id="game">
   <canvas id="gc"></canvas>
+  <button id="btnBackToHub">← Hub</button>
   <div id="xhair"></div>
 
   <!-- BARS -->
@@ -453,6 +503,7 @@ let G = {
   buildMode:false,
   currentChest:null,
   currentFire:null,
+  hubMode:true,
   settings:{
     bright:1.0, quality:'medium', fov:75, sens:1.5,
     keys:{forward:'w',backward:'s',left:'a',right:'d',jump:' ',inv:'tab',craft:'c'}
@@ -466,6 +517,15 @@ let scene, camera, renderer, clock, composer;
 let ambient, sun, hemi;
 let raycaster = new THREE.Raycaster();
 let buildPreview = null;
+
+// ═══════════════════════════════════════════════════════════
+// HUB GLOBALS
+// ═══════════════════════════════════════════════════════════
+let hubScene, hubCamera;
+let hubVel = new THREE.Vector3();
+let hubYaw = 0, hubPitch = 0;
+let hubLocked = false;
+let hubPortals = []; // {x, z, color, name, icon, desc, playable}
 
 // ═══════════════════════════════════════════════════════════
 // WORLD OBJECTS
