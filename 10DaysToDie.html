@@ -638,7 +638,15 @@ function mkHouse(hx, hz, idx) {
   }
 
   // House bounds for collision
-  houseBoxes.push({ x:hx, z:hz, W, D });
+  // Store 4 individual walls for collision:
+  // Each wall: {x1,z1,x2,z2} = line segment, thickness handled via AABB check
+  // We store as AABB segments that the player must not cross.
+  // Instead, store the house as walls array with door gap info.
+  houseBoxes.push({
+    x: hx, z: hz, W, D,
+    // Door is centered on +Z (front) wall, 1.5 wide
+    doorX: hx, doorZ: hz + D/2, doorW: 1.5
+  });
 
   // Zombies
   for (let i = 0; i < ZPH; i++) {
@@ -894,22 +902,39 @@ function spawnZombie(x, z) {
 function applyZombieWallCollision(zg) {
   // House walls
   for (const h of houseBoxes) {
-    if (Math.abs(zg.position.x - h.x) > h.W+1 || Math.abs(zg.position.z - h.z) > h.D+1) continue;
-    const hw = h.W/2 + 0.4;
-    const hd = h.D/2 + 0.4;
-    const lx = zg.position.x - h.x;
-    const lz = zg.position.z - h.z;
-    if (Math.abs(lx) < hw && Math.abs(lz) < hd) {
-      // Push zombie out from nearest wall face
-      const dL = lx + hw, dR = hw - lx, dF = lz + hd, dB = hd - lz;
-      const mn = Math.min(dL, dR, dF, dB);
-      if      (mn === dL) zg.position.x = h.x - hw;
-      else if (mn === dR) zg.position.x = h.x + hw;
-      else if (mn === dF) zg.position.z = h.z - hd;
-      else                zg.position.z = h.z + hd;
-      // Deflect wander direction so zombie doesn't get stuck
-      zg.userData.wanderDir.x *= -0.8;
-      zg.userData.wanderDir.z *= -0.8;
+    if (Math.abs(zg.position.x - h.x) > h.W/2+3 || Math.abs(zg.position.z - h.z) > h.D/2+3) continue;
+    const hw = h.W/2, hd = h.D/2;
+    const T = 0.45;
+    const zx = zg.position.x, zz = zg.position.z;
+    const lx = zx - h.x, lz = zz - h.z;
+    // Front wall with door gap
+    if (Math.abs(lx) <= hw+T && Math.abs(lz - hd) < T) {
+      const inDoor = Math.abs(lx) < 0.82;
+      if (!inDoor && lz > hd-T && lz < hd+T) {
+        zg.position.z = zz < h.z+hd ? h.z+hd-T : h.z+hd+T;
+        zg.userData.wanderDir.z *= -1;
+      }
+    }
+    // Back wall
+    if (Math.abs(lx) <= hw+T && Math.abs(lz + hd) < T) {
+      if (lz > -hd-T && lz < -hd+T) {
+        zg.position.z = zz < h.z-hd ? h.z-hd-T : h.z-hd+T;
+        zg.userData.wanderDir.z *= -1;
+      }
+    }
+    // Left wall
+    if (Math.abs(lz) <= hd+T && Math.abs(lx + hw) < T) {
+      if (lx > -hw-T && lx < -hw+T) {
+        zg.position.x = zx < h.x-hw ? h.x-hw-T : h.x-hw+T;
+        zg.userData.wanderDir.x *= -1;
+      }
+    }
+    // Right wall
+    if (Math.abs(lz) <= hd+T && Math.abs(lx - hw) < T) {
+      if (lx > hw-T && lx < hw+T) {
+        zg.position.x = zx < h.x+hw ? h.x+hw-T : h.x+hw+T;
+        zg.userData.wanderDir.x *= -1;
+      }
     }
   }
   // Tree trunks
@@ -1208,18 +1233,42 @@ function updatePlayer(dt) {
     }
   }
 
-  // House collision — only check nearby houses
+  // House wall collision — per-wall with door gap
   for (const h of houseBoxes) {
-    if (Math.abs(camera.position.x - h.x) > h.W+2 || Math.abs(camera.position.z - h.z) > h.D+2) continue;
-    const hw = h.W/2+0.45, hd = h.D/2+0.45;
-    const px = camera.position.x - h.x;
-    const pz = camera.position.z - h.z;
-    if (Math.abs(px)<hw && Math.abs(pz)<hd) {
-      const onFront = pz > 0 && pz > hd-0.6;
-      if (onFront && Math.abs(px) < 0.95) continue;
-      const ox = hw - Math.abs(px), oz = hd - Math.abs(pz);
-      if (ox < oz) camera.position.x = h.x + Math.sign(px)*hw;
-      else         camera.position.z = h.z + Math.sign(pz)*hd;
+    if (Math.abs(camera.position.x - h.x) > h.W/2+3 || Math.abs(camera.position.z - h.z) > h.D/2+3) continue;
+    const hw = h.W/2, hd = h.D/2;
+    const T = 0.42; // wall thickness + player radius
+    const px = camera.position.x, pz = camera.position.z;
+    const lx = px - h.x, lz = pz - h.z;
+
+    // Only collide if player is near a wall (within T of wall plane)
+    // Front wall (+Z): has door gap
+    if (Math.abs(lx) <= hw+T && Math.abs(lz - hd) < T) {
+      // Check if player is in door gap (1.5 wide, centered at h.x)
+      const inDoor = Math.abs(lx) < 0.82;
+      if (!inDoor) {
+        if (lz > hd - T && lz < hd + T) {
+          camera.position.z = pz < h.z + hd ? h.z + hd - T : h.z + hd + T;
+        }
+      }
+    }
+    // Back wall (-Z): no door
+    if (Math.abs(lx) <= hw+T && Math.abs(lz + hd) < T) {
+      if (lz > -hd - T && lz < -hd + T) {
+        camera.position.z = pz < h.z - hd ? h.z - hd - T : h.z - hd + T;
+      }
+    }
+    // Left wall (-X)
+    if (Math.abs(lz) <= hd+T && Math.abs(lx + hw) < T) {
+      if (lx > -hw - T && lx < -hw + T) {
+        camera.position.x = px < h.x - hw ? h.x - hw - T : h.x - hw + T;
+      }
+    }
+    // Right wall (+X)
+    if (Math.abs(lz) <= hd+T && Math.abs(lx - hw) < T) {
+      if (lx > hw - T && lx < hw + T) {
+        camera.position.x = px < h.x + hw ? h.x + hw - T : h.x + hw + T;
+      }
     }
   }
 
@@ -1544,8 +1593,8 @@ function resetGame() {
 }
 
 function updateSurvival(dt) {
-  G.hunger = Math.max(0, G.hunger - dt*0.45);
-  G.thirst = Math.max(0, G.thirst - dt*0.65);
+  G.hunger = Math.max(0, G.hunger - dt*0.08);  // ~12 Minuten bis leer
+  G.thirst = Math.max(0, G.thirst - dt*0.12);  // ~8 Minuten bis leer
   if (G.hunger<=0 || G.thirst<=0) takeDamage(dt*1.8);
 
   // Zombie spawn
