@@ -584,83 +584,115 @@ function mkChest(x, y, z) {
 }
 
 function mkHouse(hx, hz, idx) {
-  const W = 11 + Math.random() * 5;
-  const D = 9 + Math.random() * 5;
-  const H = 6.5;
+  // Fixed sizes — no random variation to avoid geometry mismatches
+  const W = 10 + (idx % 4) * 2;   // 10, 12, 14, 16
+  const D = 8  + (idx % 3) * 2;   // 8, 10, 12
+  const H = 5.5;                   // wall height
+  const WT = 0.3;                  // wall thickness
+  const DOOR_W = 1.6;              // door opening width
+  const DOOR_H = 2.6;              // door opening height
+
   const wallC = [0xd4b483,0xc49a6c,0xbba877,0xc8a96e,0xd2b48c,0xc8b89a][idx%6];
   const roofC = [0x8b4513,0x6b3a2a,0x5c3317,0x704214,0x9b5523,0x7a3c18][idx%6];
-
-  const wm = new THREE.MeshLambertMaterial({ color: wallC });
-  const rm = new THREE.MeshLambertMaterial({ color: roofC });
-  const fm = new THREE.MeshLambertMaterial({ color: 0x888070 });
-  const dm = new THREE.MeshLambertMaterial({ color: 0x3a2010 });
-  const gm = new THREE.MeshLambertMaterial({ color: 0x6ab0d4, transparent:true, opacity:0.5 });
+  const wm  = new THREE.MeshLambertMaterial({ color: wallC });
+  const rm  = new THREE.MeshLambertMaterial({ color: roofC });
+  const fm  = new THREE.MeshLambertMaterial({ color: 0x7a7060 });
+  const dm  = new THREE.MeshLambertMaterial({ color: 0x3a2010 });
+  const wdm = new THREE.MeshLambertMaterial({ color: 0x6ab0d4, transparent:true, opacity:0.55 });
+  const fdm = new THREE.MeshLambertMaterial({ color: 0x555548 }); // concrete floor
 
   function box(mat, w, h, d, px, py, pz) {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), mat);
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
     m.position.set(px, py, pz);
-    
-    
     scene.add(m);
     return m;
   }
 
-  // Floor
-  box(fm, W, 0.22, D, hx, 0.11, hz);
-  // Front wall (two halves leaving door gap)
-  box(wm, (W-1.8)/2, H, 0.28, hx - (W/2 - (W-1.8)/4), H/2+0.22, hz+D/2);
-  box(wm, (W-1.8)/2, H, 0.28, hx + (W/2 - (W-1.8)/4), H/2+0.22, hz+D/2);
-  box(wm, 1.8, H-2.6, 0.28, hx, H-1.1, hz+D/2); // lintel
-  // Back wall
-  box(wm, W, H, 0.28, hx, H/2+0.22, hz-D/2);
-  // Left / Right walls
-  box(wm, 0.28, H, D, hx-W/2, H/2+0.22, hz);
-  box(wm, 0.28, H, D, hx+W/2, H/2+0.22, hz);
-  // Door — pivot at left edge so it swings open
+  // Ground floor (concrete slab, flush with terrain)
+  box(fdm, W, 0.15, D, hx, 0.075, hz);
+
+  // === WALLS — all Y positions relative to ground (y=0) ===
+  const wallY = H / 2;   // center of a full-height wall
+
+  // Back wall (full, no door)
+  box(wm, W, H, WT, hx, wallY, hz - D/2);
+
+  // Left wall (full)
+  box(wm, WT, H, D, hx - W/2, wallY, hz);
+
+  // Right wall (full)
+  box(wm, WT, H, D, hx + W/2, wallY, hz);
+
+  // Front wall — split into left segment, right segment, and lintel above door
+  const sideW = (W - DOOR_W) / 2;
+  // Left segment
+  box(wm, sideW, H, WT, hx - W/2 + sideW/2,  wallY,       hz + D/2);
+  // Right segment
+  box(wm, sideW, H, WT, hx + W/2 - sideW/2,  wallY,       hz + D/2);
+  // Lintel (above door opening)
+  box(wm, DOOR_W, H - DOOR_H, WT, hx, DOOR_H + (H - DOOR_H)/2, hz + D/2);
+
+  // === DOOR (swinging, pivot at left edge of opening) ===
   const doorPivot = new THREE.Group();
-  doorPivot.position.set(hx - 0.75, 0, hz + D/2);
-  const doorMesh = new THREE.Mesh(new THREE.BoxGeometry(1.48, 2.5, 0.1), dm);
-  doorMesh.position.set(0.74, 1.47, 0.05);
+  doorPivot.position.set(hx - DOOR_W/2, 0, hz + D/2);
+  const doorMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(DOOR_W - 0.05, DOOR_H - 0.05, 0.08),
+    dm
+  );
+  doorMesh.position.set(DOOR_W/2, DOOR_H/2, 0);
   doorPivot.add(doorMesh);
   doorPivot.userData = { type:'door', open:false, targetAngle:0, hx, hz };
   scene.add(doorPivot);
   doors.push(doorPivot);
-  // Windows (front)
-  box(gm, 1.4, 1.3, 0.12, hx-W*0.28, H*0.58, hz+D/2+0.05);
-  box(gm, 1.4, 1.3, 0.12, hx+W*0.28, H*0.58, hz+D/2+0.05);
-  // Windows (sides)
-  box(gm, 0.12, 1.3, 1.4, hx-W/2-0.05, H*0.58, hz);
-  box(gm, 0.12, 1.3, 1.4, hx+W/2+0.05, H*0.58, hz);
-  // Roof
-  box(rm, W+1.4, 0.55, D+1.4, hx, H+0.27+0.22, hz);
-  // Ridge
-  const ridge = new THREE.Mesh(new THREE.CylinderGeometry(0.25,0.25,W+2,5), rm);
-  ridge.rotation.z = Math.PI/2;
-  ridge.position.set(hx, H+0.55+0.22, hz);
-  scene.add(ridge);
+
+  // === WINDOWS ===
+  const winY = DOOR_H * 0.65;
+  // Front windows (one each side of door)
+  box(wdm, 1.3, 1.0, 0.1, hx - W/2 + sideW*0.55, winY, hz + D/2);
+  box(wdm, 1.3, 1.0, 0.1, hx + W/2 - sideW*0.55, winY, hz + D/2);
+  // Side windows
+  box(wdm, 0.1, 1.0, 1.3, hx - W/2, winY, hz);
+  box(wdm, 0.1, 1.0, 1.3, hx + W/2, winY, hz);
+  // Back window
+  box(wdm, 1.3, 1.0, 0.1, hx, winY, hz - D/2);
+
+  // === ROOF (flat overhang) ===
+  box(rm, W + 1.0, 0.4, D + 1.0, hx, H + 0.2, hz);
+
+  // Gable ends (triangular fill — approximated with a box)
+  box(rm, W + 1.0, 1.2, WT*1.5, hx, H + 0.2 + 0.6, hz - D/2 - 0.1);
+  box(rm, W + 1.0, 1.2, WT*1.5, hx, H + 0.2 + 0.6, hz + D/2 + 0.1);
+
+  // Ridge beam
+  const ridgeGeo = new THREE.CylinderGeometry(0.18, 0.18, D + 1.2, 6);
+  const ridgeMesh = new THREE.Mesh(ridgeGeo, rm);
+  ridgeMesh.rotation.x = Math.PI / 2;   // align along Z axis
+  ridgeMesh.position.set(hx, H + 0.2 + 1.0, hz);
+  scene.add(ridgeMesh);
+
+  // === INTERIOR ===
+  // Ceiling
+  box(fm, W - WT*2, 0.12, D - WT*2, hx, H - 0.06, hz);
 
   // Chests inside
-  const nc = Math.floor(Math.random()*2)+1;
+  const nc = Math.floor(Math.random()*2) + 1;
   for (let i = 0; i < nc; i++) {
-    mkChest(hx+(Math.random()-0.5)*(W-2), 0.22, hz+(Math.random()-0.5)*(D-2));
+    mkChest(
+      hx + (Math.random() - 0.5) * (W - 2.5),
+      0.15,
+      hz + (Math.random() - 0.5) * (D - 2.5)
+    );
   }
 
-  // House bounds for collision
-  // Store 4 individual walls for collision:
-  // Each wall: {x1,z1,x2,z2} = line segment, thickness handled via AABB check
-  // We store as AABB segments that the player must not cross.
-  // Instead, store the house as walls array with door gap info.
-  houseBoxes.push({
-    x: hx, z: hz, W, D,
-    // Door is centered on +Z (front) wall, 1.5 wide
-    doorX: hx, doorZ: hz + D/2, doorW: 1.5
-  });
+  // Collision record
+  houseBoxes.push({ x: hx, z: hz, W, D });
 
-  // Zombies
+  // Zombies near/inside house
   for (let i = 0; i < ZPH; i++) {
-    const zx = hx + (Math.random()-0.5)*(W+8);
-    const zz = hz + (Math.random()-0.5)*(D+8);
-    spawnZombie(zx, zz);
+    spawnZombie(
+      hx + (Math.random() - 0.5) * (W + 6),
+      hz + (Math.random() - 0.5) * (D + 6)
+    );
   }
 }
 
@@ -992,7 +1024,7 @@ function applyZombieWallCollision(zg) {
     const lx = zx - h.x, lz = zz - h.z;
     // Front wall with door gap
     if (Math.abs(lx) <= hw+T && Math.abs(lz - hd) < T) {
-      const inDoor = Math.abs(lx) < 0.82;
+      const inDoor = Math.abs(lx) < 0.88;
       if (!inDoor && lz > hd-T && lz < hd+T) {
         zg.position.z = zz < h.z+hd ? h.z+hd-T : h.z+hd+T;
         zg.userData.wanderDir.z *= -1;
@@ -1352,8 +1384,8 @@ function updatePlayer(dt) {
     // Only collide if player is near a wall (within T of wall plane)
     // Front wall (+Z): has door gap
     if (Math.abs(lx) <= hw+T && Math.abs(lz - hd) < T) {
-      // Check if player is in door gap (1.5 wide, centered at h.x)
-      const inDoor = Math.abs(lx) < 0.82;
+      // Door gap is 1.6 wide, centered at h.x
+      const inDoor = Math.abs(lx) < 0.88;
       if (!inDoor) {
         if (lz > hd - T && lz < hd + T) {
           camera.position.z = pz < h.z + hd ? h.z + hd - T : h.z + hd + T;
