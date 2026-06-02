@@ -1053,13 +1053,20 @@ function updateZombies(dt) {
     ud.atkCool = Math.max(0, ud.atkCool - dt);
     if (ud.attackAnim > 0) ud.attackAnim -= dt;
 
+    // Use horizontal-only distance so Y height doesn't affect attack range
     const dx = pp.x - zg.position.x;
     const dz = pp.z - zg.position.z;
     const dist = Math.hypot(dx, dz);
 
     // State machine
-    if (dist < ZCHASE) ud.state = 'chase';
-    else if (ud.state !== 'idle' && dist > ZCHASE*1.6) ud.state = 'idle';
+    if (dist <= ZATTACK) {
+      // Close enough to attack — always go to attack regardless of previous state
+      ud.state = 'attack';
+    } else if (dist < ZCHASE) {
+      if (ud.state !== 'attack') ud.state = 'chase';
+    } else if (dist > ZCHASE * 1.6) {
+      ud.state = 'idle';
+    }
 
     if (ud.state === 'idle') {
       ud.wanderT -= dt;
@@ -1072,18 +1079,15 @@ function updateZombies(dt) {
       zg.position.z += ud.wanderDir.z * ZSPEED*0.25*dt;
       applyZombieWallCollision(zg);
     } else if (ud.state === 'chase') {
-      if (dist > ZATTACK) {
-        const nx=dx/dist, nz=dz/dist;
-        zg.position.x += nx * ZSPEED * dt;
-        zg.position.z += nz * ZSPEED * dt;
-        applyZombieWallCollision(zg);
-        zg.lookAt(new THREE.Vector3(pp.x, zg.position.y, pp.z));
-      } else {
-        ud.state = 'attack';
-      }
+      const nx=dx/dist, nz=dz/dist;
+      zg.position.x += nx * ZSPEED * dt;
+      zg.position.z += nz * ZSPEED * dt;
+      applyZombieWallCollision(zg);
+      zg.lookAt(new THREE.Vector3(pp.x, zg.position.y, pp.z));
     } else { // attack
-      if (dist > ZATTACK*1.5) { ud.state='chase'; }
-      else if (ud.atkCool <= 0 && G.alive) {
+      if (dist > ZATTACK * 1.8) {
+        ud.state = 'chase';
+      } else if (ud.atkCool <= 0 && G.alive) {
         ud.atkCool = ZCOOL;
         ud.attackAnim = 0.35;
         takeDamage(ZDMG);
