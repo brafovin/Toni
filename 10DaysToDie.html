@@ -1819,7 +1819,7 @@ function countInv(id) {
 
 function invItem(id) { return G.inventory.find(s=>s&&s.id===id); }
 
-let selectedInvSlot = null; // index of slot selected for moving
+let selectedInvSlot = null;
 
 function swapInvSlots(a, b) {
   const tmp = G.inventory[a];
@@ -1830,33 +1830,53 @@ function swapInvSlots(a, b) {
   updateHotbar();
 }
 
+function slotHTML(it, extra) {
+  // pointer-events:none on children so clicks always land on the parent div
+  if (!it) return extra || '';
+  return `${extra||''}<span class="sico" style="pointer-events:none">${it.icon}</span><span class="sname" style="pointer-events:none">${it.name}</span>${it.stackable?`<span class="scnt" style="pointer-events:none">${it.count}</span>`:''}`;
+}
+
+function handleInvClick(idx) {
+  if (selectedInvSlot === null) {
+    if (!G.inventory[idx]) return;
+    selectedInvSlot = idx;
+    renderInv();
+  } else {
+    const prev = selectedInvSlot;
+    selectedInvSlot = null;
+    if (prev === idx) { renderInv(); return; }
+    swapInvSlots(prev, idx);
+  }
+}
+
 function renderInv() {
   const grid = document.getElementById('invGrid');
   grid.innerHTML = '';
+
   for (let i = 0; i < 40; i++) {
     const it = G.inventory[i];
     const d = document.createElement('div');
     d.className = 'islot';
-    if (i === selectedInvSlot) d.style.border = '2px solid #ffd700';
-    if (it) {
-      d.innerHTML = `<span class="sico">${it.icon}</span><span class="sname">${it.name}</span>${it.stackable?`<span class="scnt">${it.count}</span>`:''}`;
-      d.title = it.name;
-    }
-    d.addEventListener('click', () => {
-      if (selectedInvSlot === null) {
-        if (!G.inventory[i]) return; // nothing to pick up
-        selectedInvSlot = i;
-        renderInv();
-      } else {
-        if (selectedInvSlot === i) { selectedInvSlot = null; renderInv(); return; }
-        swapInvSlots(selectedInvSlot, i);
-      }
-    });
-    d.addEventListener('dblclick', () => { selectedInvSlot = null; useItem(i); });
+    d.dataset.idx = i;
+    if (i === selectedInvSlot) d.style.cssText = 'border:2px solid #ffd700;box-shadow:0 0 8px rgba(255,215,0,0.5);';
+    d.innerHTML = slotHTML(it);
     grid.appendChild(d);
   }
 
-  // Hotbar row at bottom of inventory modal
+  // Single delegated listener — no per-slot listeners
+  grid.onclick = e => {
+    const slot = e.target.closest('[data-idx]');
+    if (!slot) return;
+    handleInvClick(parseInt(slot.dataset.idx));
+  };
+  grid.ondblclick = e => {
+    const slot = e.target.closest('[data-idx]');
+    if (!slot) return;
+    selectedInvSlot = null;
+    useItem(parseInt(slot.dataset.idx));
+  };
+
+  // Hotbar row
   const hbar = document.getElementById('invHotbar');
   if (!hbar) return;
   hbar.innerHTML = '';
@@ -1864,23 +1884,17 @@ function renderInv() {
     const it = G.inventory[s];
     const d = document.createElement('div');
     d.className = 'islot';
-    const active = s === G.activeSlot;
-    const selected = s === selectedInvSlot;
-    d.style.cssText = `width:62px;height:62px;border:2px solid ${selected?'#ffd700':active?'#ffd700':'#555'};${active?'box-shadow:0 0 8px rgba(255,215,0,0.4);':''}`;
-    d.innerHTML = `<span style="font-size:9px;color:#888;position:absolute;top:2px;left:4px;">${s+1}</span>`;
-    if (it) d.innerHTML += `<span class="sico">${it.icon}</span><span class="sname">${it.name}</span>${it.stackable?`<span class="scnt">${it.count}</span>`:''}`;
-    d.addEventListener('click', () => {
-      if (selectedInvSlot === null) {
-        if (!G.inventory[s]) return;
-        selectedInvSlot = s;
-        renderInv();
-      } else {
-        if (selectedInvSlot === s) { selectedInvSlot = null; renderInv(); return; }
-        swapInvSlots(selectedInvSlot, s);
-      }
-    });
+    d.dataset.hslot = s;
+    const gold = s === G.activeSlot || s === selectedInvSlot;
+    d.style.cssText = `width:62px;height:62px;border:2px solid ${gold?'#ffd700':'#555'};${s===G.activeSlot?'box-shadow:0 0 8px rgba(255,215,0,0.4);':''}`;
+    d.innerHTML = slotHTML(it, `<span style="font-size:9px;color:#888;position:absolute;top:2px;left:4px;pointer-events:none">${s+1}</span>`);
     hbar.appendChild(d);
   }
+  hbar.onclick = e => {
+    const slot = e.target.closest('[data-hslot]');
+    if (!slot) return;
+    handleInvClick(parseInt(slot.dataset.hslot));
+  };
 }
 
 function useHotbarItem() {
