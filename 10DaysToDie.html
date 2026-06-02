@@ -281,7 +281,7 @@ canvas{display:block;}
 <div class="modal" id="invModal">
   <div class="mbox" style="min-width:560px;">
     <h2>📦 INVENTAR <button class="mclose" id="clInv">✕</button></h2>
-    <p style="color:#555;font-size:11px;margin-bottom:8px;">Doppelklick: benutzen &nbsp;|&nbsp; Ziehen → Hotbar-Slot unten</p>
+    <p style="color:#555;font-size:11px;margin-bottom:8px;">1× Klick: auswählen (gold) → 2. Klick: tauschen &nbsp;|&nbsp; Doppelklick: benutzen</p>
     <div class="invgrid" id="invGrid"></div>
     <div style="margin-top:16px;border-top:1px solid #333;padding-top:12px;">
       <div style="color:#aaa;font-size:11px;margin-bottom:6px;">HOTBAR (ziehe Items hierher)</div>
@@ -1818,76 +1818,67 @@ function countInv(id) {
 
 function invItem(id) { return G.inventory.find(s=>s.id===id); }
 
-let dragSrcSlot = null; // inventory index being dragged
+let selectedInvSlot = null; // index of slot selected for moving
 
-function makeInvSlot(i, it) {
-  const d = document.createElement('div');
-  d.className = 'islot';
-  if (it) {
-    d.innerHTML = `<span class="sico">${it.icon}</span><span class="sname">${it.name}</span>${it.stackable?`<span class="scnt">${it.count}</span>`:''}`;
-    d.title = it.name;
-    d.draggable = true;
-    d.addEventListener('dblclick', () => useItem(i));
-    d.addEventListener('dragstart', e => {
-      dragSrcSlot = i;
-      e.dataTransfer.effectAllowed = 'move';
-    });
-  }
-  d.addEventListener('dragover', e => { e.preventDefault(); d.classList.add('drag-over'); });
-  d.addEventListener('dragleave', () => d.classList.remove('drag-over'));
-  d.addEventListener('drop', e => {
-    e.preventDefault();
-    d.classList.remove('drag-over');
-    if (dragSrcSlot === null || dragSrcSlot === i) return;
-    // Swap slots
-    const tmp = G.inventory[i];
-    G.inventory[i] = G.inventory[dragSrcSlot];
-    G.inventory[dragSrcSlot] = tmp;
-    dragSrcSlot = null;
-    renderInv();
-    updateHotbar();
-  });
-  return d;
+function swapInvSlots(a, b) {
+  const tmp = G.inventory[a];
+  G.inventory[a] = G.inventory[b];
+  G.inventory[b] = tmp;
+  selectedInvSlot = null;
+  renderInv();
+  updateHotbar();
 }
 
 function renderInv() {
   const grid = document.getElementById('invGrid');
   grid.innerHTML = '';
   for (let i = 0; i < 40; i++) {
-    grid.appendChild(makeInvSlot(i, G.inventory[i]));
-  }
-  // Render hotbar row inside inventory modal
-  const hbar = document.getElementById('invHotbar');
-  if (hbar) {
-    hbar.innerHTML = '';
-    for (let s = 0; s < G.hotbarSlots; s++) {
-      const it = G.inventory[s];
-      const d = document.createElement('div');
-      d.className = 'islot' + (s === G.activeSlot ? ' drag-over' : '');
-      d.style.cssText = 'width:62px;height:62px;border:2px solid ' + (s===G.activeSlot?'#ffd700':'#555') + ';';
-      const label = document.createElement('div');
-      label.style.cssText = 'font-size:9px;color:#888;position:absolute;top:2px;left:4px;';
-      label.textContent = s + 1;
-      d.appendChild(label);
-      if (it) {
-        d.innerHTML += `<span class="sico">${it.icon}</span><span class="sname">${it.name}</span>${it.stackable?`<span class="scnt">${it.count}</span>`:''}`;
-      }
-      d.addEventListener('dragover', e => { e.preventDefault(); d.classList.add('drag-over'); });
-      d.addEventListener('dragleave', () => { if (s!==G.activeSlot) d.classList.remove('drag-over'); });
-      d.addEventListener('drop', e => {
-        e.preventDefault();
-        d.classList.remove('drag-over');
-        if (dragSrcSlot === null) return;
-        // Move dragged item to hotbar slot s; push whatever was there to dragSrcSlot
-        const tmp = G.inventory[s];
-        G.inventory[s] = G.inventory[dragSrcSlot];
-        G.inventory[dragSrcSlot] = tmp;
-        dragSrcSlot = null;
-        renderInv();
-        updateHotbar();
-      });
-      hbar.appendChild(d);
+    const it = G.inventory[i];
+    const d = document.createElement('div');
+    d.className = 'islot';
+    if (i === selectedInvSlot) d.style.border = '2px solid #ffd700';
+    if (it) {
+      d.innerHTML = `<span class="sico">${it.icon}</span><span class="sname">${it.name}</span>${it.stackable?`<span class="scnt">${it.count}</span>`:''}`;
+      d.title = it.name;
     }
+    d.addEventListener('click', () => {
+      if (selectedInvSlot === null) {
+        if (!G.inventory[i]) return; // nothing to pick up
+        selectedInvSlot = i;
+        renderInv();
+      } else {
+        if (selectedInvSlot === i) { selectedInvSlot = null; renderInv(); return; }
+        swapInvSlots(selectedInvSlot, i);
+      }
+    });
+    d.addEventListener('dblclick', () => { selectedInvSlot = null; useItem(i); });
+    grid.appendChild(d);
+  }
+
+  // Hotbar row at bottom of inventory modal
+  const hbar = document.getElementById('invHotbar');
+  if (!hbar) return;
+  hbar.innerHTML = '';
+  for (let s = 0; s < G.hotbarSlots; s++) {
+    const it = G.inventory[s];
+    const d = document.createElement('div');
+    d.className = 'islot';
+    const active = s === G.activeSlot;
+    const selected = s === selectedInvSlot;
+    d.style.cssText = `width:62px;height:62px;border:2px solid ${selected?'#ffd700':active?'#ffd700':'#555'};${active?'box-shadow:0 0 8px rgba(255,215,0,0.4);':''}`;
+    d.innerHTML = `<span style="font-size:9px;color:#888;position:absolute;top:2px;left:4px;">${s+1}</span>`;
+    if (it) d.innerHTML += `<span class="sico">${it.icon}</span><span class="sname">${it.name}</span>${it.stackable?`<span class="scnt">${it.count}</span>`:''}`;
+    d.addEventListener('click', () => {
+      if (selectedInvSlot === null) {
+        if (!G.inventory[s]) return;
+        selectedInvSlot = s;
+        renderInv();
+      } else {
+        if (selectedInvSlot === s) { selectedInvSlot = null; renderInv(); return; }
+        swapInvSlots(selectedInvSlot, s);
+      }
+    });
+    hbar.appendChild(d);
   }
 }
 
